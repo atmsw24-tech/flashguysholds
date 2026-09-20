@@ -22,6 +22,7 @@ import {
   X,
   Zap
 } from "lucide-react";
+import { startLiveFeeds } from "./liveFeeds";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 
@@ -249,6 +250,7 @@ function StatCard({ icon: Icon, label, value, detail }) {
 
 function App() {
   const [tokens, setTokens] = useState(DEMO_TOKENS);
+  
   const [activeChain, setActiveChain] = useState("all");
   const [activeView, setActiveView] = useState("trending");
   const [search, setSearch] = useState("");
@@ -257,7 +259,10 @@ function App() {
   const [showLaunch, setShowLaunch] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [apiStatus, setApiStatus] = useState("demo");
-
+const [liveStatus, setLiveStatus] = useState({
+  solana: false,
+  robinhood: false
+});
   async function loadTokens() {
     setLoading(true);
 

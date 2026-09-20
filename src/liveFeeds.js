@@ -61,7 +61,7 @@ function normalizeRobinhoodToken(data) {
   return {
     id: `robinhood-${data.token || data.poolId || Date.now()}`,
 
-    chain: "Robinhood Chain",
+    chain: "robinhood",
     network: "robinhood",
 
     name: data.name || "Unknown Token",

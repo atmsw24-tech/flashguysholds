@@ -1,0 +1,7 @@
+FLASHGUYS — GITHUB PACKAGE
+
+Upload the CONTENTS of this folder to a GitHub repository named flashguys.
+Do not upload the ZIP itself as the application.
+
+Never upload .env or real secret keys. Use .env.example as the template.
+After upload, import this repository into Vercel.

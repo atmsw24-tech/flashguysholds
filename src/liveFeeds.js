@@ -17,7 +17,7 @@ const SOLANA_PROTOCOLS = [
 function normalizeSolanaToken(data) {
   return {
     id: `solana-${data.mint || data.address || Date.now()}`,
-    chain: "Solana",
+    chain: "solana",
     network: "solana",
 
     name: data.name || "Unknown Token",

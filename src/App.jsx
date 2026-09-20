@@ -259,6 +259,7 @@ function App() {
   const [showLaunch, setShowLaunch] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [apiStatus, setApiStatus] = useState("demo");
+  const [selectedToken, setSelectedToken] = useState(null);
 const [liveStatus, setLiveStatus] = useState({
   solana: false,
   robinhood: false

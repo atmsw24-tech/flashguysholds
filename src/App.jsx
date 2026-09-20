@@ -301,6 +301,83 @@ const [liveStatus, setLiveStatus] = useState({
     loadTokens();
   }, [activeChain]);
 
+  useEffect(() => {
+  const stopLiveFeeds = startLiveFeeds({
+    onStatus: (status) => {
+      const key =
+        status.chain === "Solana"
+          ? "solana"
+          : "robinhood";
+
+      setLiveStatus((current) => ({
+        ...current,
+        [key]: status.connected
+      }));
+
+      if (status.connected) {
+        setApiStatus("live");
+        setLastUpdated(new Date());
+      }
+    },
+
+    onToken: (incomingToken) => {
+      if (!incomingToken) return;
+
+      const now = Date.now();
+
+      const token = {
+        ...incomingToken,
+        id:
+          incomingToken.id ||
+          `${incomingToken.chain}-${incomingToken.address || now}`,
+        name: incomingToken.name || "New Token",
+        symbol: incomingToken.symbol || "UNKNOWN",
+        address:
+          incomingToken.address ||
+          incomingToken.mint ||
+          "",
+        price: Number(incomingToken.price || 0),
+        change24h: Number(incomingToken.change24h || 0),
+        volume24h: Number(incomingToken.volume24h || 0),
+        liquidity: Number(incomingToken.liquidity || 0),
+        live: true
+      };
+
+      setTokens((currentTokens) => {
+        const existingIndex =
+          currentTokens.findIndex(
+            (item) => item.id === token.id
+          );
+
+        if (existingIndex !== -1) {
+          const updated = [...currentTokens];
+          updated[existingIndex] = {
+            ...updated[existingIndex],
+            ...token
+          };
+          return updated;
+        }
+
+        return [token, ...currentTokens].slice(0, 200);
+      });
+
+      setApiStatus("live");
+      setLastUpdated(new Date());
+    },
+
+    onError: (error) => {
+      console.warn(
+        "FLASHGUYS live feed:",
+        error
+      );
+    }
+  });
+
+  return () => {
+    stopLiveFeeds?.();
+  };
+}, []);
+
   const filteredTokens = useMemo(() => {
     let result = [...tokens];
 

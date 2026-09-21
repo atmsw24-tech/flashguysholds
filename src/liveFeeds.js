@@ -102,15 +102,17 @@ console.log(
   const enrichedToken = {
     ...initialToken,
 
-    name:
-      metadata.name ||
-      initialToken.name ||
-      "New Token",
+   name:
+  metadata.name ||
+  data.name ||
+  initialToken.name ||
+  "New Token",
 
-    symbol:
-      metadata.symbol ||
-      initialToken.symbol ||
-      "UNKNOWN",
+symbol:
+  metadata.symbol ||
+  data.symbol ||
+  initialToken.symbol ||
+  "UNKNOWN",
 
     uri:
       metadata.uri ||

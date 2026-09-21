@@ -1,23 +1,19 @@
 /*
- * FLASHGUYS token discovery endpoint.
+ * Client-side market data for FLASHGUYS.
  *
- * Returns CURRENT market data for meme coins:
+ * This project is a Vite SPA, so the serverless route in /api only runs on
+ * Vercel. DexScreener's public API is CORS-enabled, so we fetch current
+ * Solana meme coin data directly from the browser. This keeps real data
+ * flowing in both the local preview and production.
  *
- *  - Solana: pulled live from the DexScreener public API
- *    (trending/boosted tokens + verified blue-chip memecoins),
- *    normalized into the FLASHGUYS token model.
- *
- *  - Robinhood Chain: Shrine exposes this only over a live WebSocket
- *    (see src/liveFeeds.js). There is no public REST snapshot, so the
- *    client seeds Robinhood Chain tokens from that live feed. This
- *    endpoint returns whatever it can and lets the client merge the
- *    streamed launches on top.
+ * Robinhood Chain has no public REST snapshot (Shrine only exposes it over a
+ * WebSocket), so those tokens arrive via the live feed in liveFeeds.js.
  */
 
 const DEXSCREENER = "https://api.dexscreener.com";
 
 // Verified, high-liquidity Solana memecoin mints used as a stable base set
-// so the feed always has real current data even if the trending call is slow.
+// so the feed always has real current data even if trending is slow/empty.
 const CURATED_SOLANA_MINTS = [
   "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", // BONK
   "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm", // WIF (dogwifhat)
@@ -89,7 +85,11 @@ function normalizeDexPair(pair) {
   };
 }
 
-async function getSolanaTokens() {
+/**
+ * Fetch current Solana meme coins from DexScreener.
+ * Returns a normalized, volume-sorted array (may be empty on failure).
+ */
+export async function fetchSolanaMemecoins() {
   const trending = await getTrendingSolanaMints();
 
   // De-duplicate: curated blue chips first, then trending discoveries.
@@ -133,31 +133,4 @@ async function getSolanaTokens() {
   tokens.sort((a, b) => b.volume24h - a.volume24h);
 
   return tokens;
-}
-
-export default async function handler(req, res) {
-  const chain = req.query.chain;
-
-  let tokens = [];
-
-  if (!chain || chain === "all" || chain === "solana") {
-    tokens = await getSolanaTokens();
-  }
-
-  const live = tokens.length > 0;
-
-  // Cache at the edge for a minute; meme markets move fast but not per-request.
-  res.setHeader(
-    "Cache-Control",
-    "s-maxage=60, stale-while-revalidate=120"
-  );
-
-  res.status(200).json({
-    success: true,
-    source: live ? "DexScreener" : "empty",
-    live,
-    chain: chain || "all",
-    count: tokens.length,
-    tokens
-  });
 }

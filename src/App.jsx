@@ -23,8 +23,7 @@ import {
   Zap
 } from "lucide-react";
 import { startLiveFeeds } from "./liveFeeds";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
+import { fetchSolanaMemecoins } from "./marketData";
 
 const DEMO_TOKENS = [
   {
@@ -215,6 +214,18 @@ function chainName(chain) {
   return chain === "solana" ? "Solana" : "Robinhood Chain";
 }
 
+function mergeTokens(current, incoming) {
+  // Fresh API data takes priority, but tokens only present from the live
+  // WebSocket feed (e.g. Robinhood Chain launches) must be preserved.
+  const map = new Map(current.map((token) => [token.id, token]));
+
+  for (const token of incoming) {
+    map.set(token.id, { ...map.get(token.id), ...token });
+  }
+
+  return Array.from(map.values());
+}
+
 function ChainBadge({ chain }) {
   return (
     <span className={`chain-badge ${chain}`}>
@@ -225,6 +236,21 @@ function ChainBadge({ chain }) {
 }
 
 function TokenIcon({ token }) {
+  const [failed, setFailed] = useState(false);
+
+  if (token.image && !failed) {
+    return (
+      <div className={`token-icon ${token.chain} has-image`}>
+        <img
+          src={token.image}
+          alt={`${token.name} logo`}
+          loading="lazy"
+          onError={() => setFailed(true)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className={`token-icon ${token.chain}`}>
       {token.symbol.slice(0, 2)}
@@ -249,7 +275,7 @@ function StatCard({ icon: Icon, label, value, detail }) {
 }
 
 function App() {
-  const [tokens, setTokens] = useState(DEMO_TOKENS);
+  const [tokens, setTokens] = useState([]);
   
   const [activeChain, setActiveChain] = useState("all");
   const [activeView, setActiveView] = useState("trending");
@@ -258,7 +284,7 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [showLaunch, setShowLaunch] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
-  const [apiStatus, setApiStatus] = useState("demo");
+  const [apiStatus, setApiStatus] = useState("loading");
   const [selectedToken, setSelectedToken] = useState(null);
 const [liveStatus, setLiveStatus] = useState({
   solana: false,
@@ -268,30 +294,18 @@ const [liveStatus, setLiveStatus] = useState({
     setLoading(true);
 
     try {
-      const query = activeChain === "all" ? "" : `?chain=${activeChain}`;
-      const response = await fetch(`${API_BASE}/tokens${query}`);
+      const solanaTokens = await fetchSolanaMemecoins();
 
-      if (!response.ok) {
-        throw new Error("API unavailable");
-      }
-
-      const data = await response.json();
-
-      if (Array.isArray(data.tokens) && data.tokens.length > 0) {
-        setTokens(data.tokens);
-        setApiStatus(data.source || "api");
+      if (solanaTokens.length > 0) {
+        setTokens((current) => mergeTokens(current, solanaTokens));
+        setApiStatus((current) => (current === "live" ? "live" : "api"));
       } else {
-        setTokens(DEMO_TOKENS);
-        setApiStatus("demo");
+        setApiStatus((current) => (current === "live" ? "live" : "empty"));
       }
     } catch {
-      const fallback =
-        activeChain === "all"
-          ? DEMO_TOKENS
-          : DEMO_TOKENS.filter((token) => token.chain === activeChain);
-
-      setTokens(fallback);
-      setApiStatus("demo");
+      // Network/API failure: only seed offline demo data if we have nothing.
+      setTokens((current) => (current.length > 0 ? current : DEMO_TOKENS));
+      setApiStatus((current) => (current === "live" ? "live" : "demo"));
     } finally {
       setLastUpdated(new Date());
       setLoading(false);
@@ -300,7 +314,7 @@ const [liveStatus, setLiveStatus] = useState({
 
   useEffect(() => {
     loadTokens();
-  }, [activeChain]);
+  }, []);
 
   useEffect(() => {
   const stopLiveFeeds = startLiveFeeds({
@@ -381,6 +395,10 @@ const [liveStatus, setLiveStatus] = useState({
 
   const filteredTokens = useMemo(() => {
     let result = [...tokens];
+
+    if (activeChain !== "all") {
+      result = result.filter((token) => token.chain === activeChain);
+    }
 
     const normalizedSearch = search.trim().toLowerCase();
 
@@ -561,7 +579,7 @@ const [liveStatus, setLiveStatus] = useState({
             icon={BarChart3}
             label="24h Volume"
             value={formatMoney(totalVolume)}
-            detail="Demo discovery dataset"
+            detail="Live market data"
           />
 
           <StatCard
@@ -660,7 +678,19 @@ const [liveStatus, setLiveStatus] = useState({
 
             {!loading &&
               filteredTokens.map((token) => (
-                <div className="token-table token-row" key={token.id}>
+                <div
+                  className="token-table token-row"
+                  key={token.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedToken(token)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelectedToken(token);
+                    }
+                  }}
+                >
                   <div className="token-cell">
                     <TokenIcon token={token} />
 
@@ -788,15 +818,19 @@ const [liveStatus, setLiveStatus] = useState({
               Data source:{" "}
               <strong>
                 {apiStatus === "demo"
-                  ? "Demo / fallback dataset"
-                  : "API discovery endpoint"}
+                  ? "Demo / offline fallback"
+                  : apiStatus === "live"
+                    ? "Live feeds + DexScreener"
+                    : apiStatus === "loading"
+                      ? "Loading market data..."
+                      : "DexScreener market data"}
               </strong>
             </span>
           </div>
 
           <span>
-            Live chain indexing will replace fallback data after providers are
-            configured.
+            Solana meme coins from DexScreener; Robinhood Chain launches stream
+            in live over WebSocket.
           </span>
         </section>
       </main>
@@ -814,6 +848,132 @@ const [liveStatus, setLiveStatus] = useState({
           <span>Launch</span>
         </div>
       </footer>
+
+      {selectedToken && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setSelectedToken(null)}
+        >
+          <div
+            className="token-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div className="token-modal-title">
+                <TokenIcon token={selectedToken} />
+
+                <div>
+                  <h2>
+                    {selectedToken.name}
+                    <span className="token-modal-symbol">
+                      {selectedToken.symbol}
+                    </span>
+                  </h2>
+                  <ChainBadge chain={selectedToken.chain} />
+                </div>
+              </div>
+
+              <button
+                className="icon-button"
+                onClick={() => setSelectedToken(null)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="token-modal-stats">
+              <div className="modal-stat">
+                <span>Price</span>
+                <strong>{formatMoney(Number(selectedToken.price))}</strong>
+              </div>
+
+              <div className="modal-stat">
+                <span>24h</span>
+                <strong
+                  className={
+                    Number(selectedToken.change24h) >= 0
+                      ? "positive"
+                      : "negative"
+                  }
+                >
+                  {Number(selectedToken.change24h) >= 0 ? "+" : ""}
+                  {Number(selectedToken.change24h).toFixed(1)}%
+                </strong>
+              </div>
+
+              <div className="modal-stat">
+                <span>Volume</span>
+                <strong>{formatMoney(Number(selectedToken.volume24h))}</strong>
+              </div>
+
+              <div className="modal-stat">
+                <span>Liquidity</span>
+                <strong>
+                  {formatMoney(Number(selectedToken.liquidity))}
+                </strong>
+              </div>
+
+              {selectedToken.marketCap > 0 && (
+                <div className="modal-stat">
+                  <span>Market Cap</span>
+                  <strong>
+                    {formatMoney(Number(selectedToken.marketCap))}
+                  </strong>
+                </div>
+              )}
+
+              <div className="modal-stat">
+                <span>Age</span>
+                <strong>{formatAge(Number(selectedToken.ageMinutes))}</strong>
+              </div>
+            </div>
+
+            <div className="token-chart">
+              {selectedToken.pairAddress ? (
+                <iframe
+                  title={`${selectedToken.symbol} price chart`}
+                  src={`https://dexscreener.com/${
+                    selectedToken.chainId || "solana"
+                  }/${selectedToken.pairAddress}?embed=1&theme=dark&info=0&trades=0`}
+                  loading="lazy"
+                />
+              ) : (
+                <div className="chart-empty">
+                  <BarChart3 size={26} />
+                  <p>
+                    Live chart is not available for this token yet. It streams
+                    in over the live feed before a market index is ready.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="token-modal-footer">
+              <div className="token-address">
+                <span>Contract</span>
+                <code>{shortenAddress(selectedToken.address)}</code>
+              </div>
+
+              {(selectedToken.url || selectedToken.pairAddress) && (
+                <a
+                  className="primary-button"
+                  href={
+                    selectedToken.url ||
+                    `https://dexscreener.com/${
+                      selectedToken.chainId || "solana"
+                    }/${selectedToken.pairAddress}`
+                  }
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open on DexScreener
+                  <ExternalLink size={15} />
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showLaunch && (
         <div

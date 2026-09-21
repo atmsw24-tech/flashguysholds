@@ -21,14 +21,31 @@ const SOLANA_PROTOCOLS = [
 async function getSolanaMetadata(mint) {
   try {
     const response = await fetch(
-      `https://sol.shrine.trade/metadata?mint=${encodeURIComponent(mint)}`
+      `https://sol.shrine.trade/api/token-info?mint=${encodeURIComponent(mint)}`
     );
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.warn(
+        "FLASHGUYS token-info failed:",
+        response.status
+      );
+      return null;
+    }
 
-    return await response.json();
+    const data = await response.json();
+
+    console.log(
+      "✅ FLASHGUYS TOKEN INFO:",
+      data
+    );
+
+    return data;
   } catch (error) {
-    console.warn("FLASHGUYS metadata error:", error);
+    console.error(
+      "FLASHGUYS token-info error:",
+      error
+    );
+
     return null;
   }
 }

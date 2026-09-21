@@ -82,7 +82,6 @@ async function handleSolanaToken(data, onToken) {
     source: "Shrine"
   };
 
-  onToken?.(initialToken);
 
   // Get complete metadata
   const metadata = await getSolanaMetadata(mint);

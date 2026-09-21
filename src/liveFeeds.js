@@ -19,19 +19,22 @@ function clean(value) {
   return String(value).trim();
 }
 
+function toNumber(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function getJson(url, timeoutMs = 8000) {
   const controller = new AbortController();
-
-  const timer = setTimeout(() => {
-    controller.abort();
-  }, timeoutMs);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(url, {
+      method: "GET",
       headers: {
         accept: "application/json"
       },
@@ -39,71 +42,67 @@ async function getJson(url, timeoutMs = 8000) {
     });
 
     if (!response.ok) {
+      console.warn(
+        "FLASHGUYS HTTP error:",
+        response.status,
+        url
+      );
       return null;
     }
 
     return await response.json();
   } catch (error) {
-    console.warn("FLASHGUYS fetch failed:", url, error);
+    console.warn(
+      "FLASHGUYS fetch failed:",
+      url,
+      error
+    );
+
     return null;
   } finally {
     clearTimeout(timer);
   }
 }
 
-/*
-|--------------------------------------------------------------------------
-| SOLANA METADATA
-|--------------------------------------------------------------------------
-|
-| Shrine's current metadata endpoint:
-|
-| https://sol.shrine.trade/metadata?mint=...
-|
-| It returns name, symbol, uri, protocol, pool, price, etc.
-|
-*/
+/* ============================================================
+   SOLANA METADATA
+   ============================================================ */
 
 async function getSolanaMetadata(mint) {
   if (!mint) return null;
 
-  const url =
-    `https://sol.shrine.trade/metadata?mint=${encodeURIComponent(mint)}`;
-
-  return await getJson(url);
+  return await getJson(
+    `https://sol.shrine.trade/metadata?mint=${encodeURIComponent(
+      mint
+    )}`
+  );
 }
 
-/*
-|--------------------------------------------------------------------------
-| SOLANA TOKEN INFO FALLBACK
-|--------------------------------------------------------------------------
-|
-| Keep the token-info endpoint as a second source.
-|
-*/
+/* ============================================================
+   SOLANA TOKEN INFO
+   ============================================================ */
 
 async function getSolanaTokenInfo(mint) {
   if (!mint) return null;
 
-  const url =
-    `https://sol.shrine.trade/api/token-info?mint=${encodeURIComponent(mint)}`;
-
-  return await getJson(url);
+  return await getJson(
+    `https://sol.shrine.trade/api/token-info?mint=${encodeURIComponent(
+      mint
+    )}`
+  );
 }
 
-/*
-|--------------------------------------------------------------------------
-| OFF-CHAIN METADATA
-|--------------------------------------------------------------------------
-*/
+/* ============================================================
+   OFF-CHAIN METADATA
+   ============================================================ */
 
 function normalizeUri(uri) {
   if (!uri) return "";
 
-  const value = String(uri).trim();
+  let value = String(uri).trim();
 
   if (value.startsWith("ipfs://")) {
-    return `https://ipfs.io/ipfs/${value.replace("ipfs://", "")}`;
+    value = `https://ipfs.io/ipfs/${value.substring(7)}`;
   }
 
   return value;
@@ -112,15 +111,11 @@ function normalizeUri(uri) {
 async function getUriMetadata(uri) {
   const normalized = normalizeUri(uri);
 
-  if (!normalized) {
-    return null;
-  }
+  if (!normalized) return null;
 
-  const data = await getJson(normalized);
+  const data = await getJson(normalized, 6000);
 
-  if (!data) {
-    return null;
-  }
+  if (!data) return null;
 
   return {
     image:
@@ -129,28 +124,24 @@ async function getUriMetadata(uri) {
       null,
 
     description:
-      clean(data.description) ||
-      "",
+      clean(data.description),
 
     website:
-      clean(data.website) ||
-      "",
+      clean(data.website),
 
     twitter:
       clean(data.twitter) ||
-      "",
+      clean(data.extensions?.twitter),
 
     telegram:
       clean(data.telegram) ||
-      ""
+      clean(data.extensions?.telegram)
   };
 }
 
-/*
-|--------------------------------------------------------------------------
-| SOLANA TOKEN NORMALIZATION
-|--------------------------------------------------------------------------
-*/
+/* ============================================================
+   SOLANA TOKEN BUILDER
+   ============================================================ */
 
 async function buildSolanaToken(event) {
   if (!event) return null;
@@ -161,79 +152,78 @@ async function buildSolanaToken(event) {
   );
 
   if (!mint) {
+    console.warn(
+      "FLASHGUYS: Solana event has no mint:",
+      event
+    );
+
     return null;
   }
 
   console.log(
-    "FLASHGUYS Solana launch detected:",
-    event.protocol,
-    mint
+    "FLASHGUYS: Solana token detected:",
+    mint,
+    event.protocol
   );
 
   /*
-   * First use whatever was included directly in the event.
+   * New tokens can arrive before their metadata has
+   * propagated to the Shrine metadata registry.
+   *
+   * Therefore we retry the registry a few times.
    */
-  let name = clean(event.name);
-  let symbol = clean(event.symbol);
-  let uri = clean(event.uri);
 
   let metadata = null;
+  let tokenInfo = null;
 
-  /*
-   * Try the documented metadata endpoint.
-   */
-  metadata = await getSolanaMetadata(mint);
+  for (let attempt = 0; attempt < 4; attempt++) {
+    metadata =
+      await getSolanaMetadata(mint);
 
-  /*
-   * If it is temporarily unavailable, try token-info.
-   */
-  if (!metadata) {
-    metadata = await getSolanaTokenInfo(mint);
-  }
+    tokenInfo =
+      await getSolanaTokenInfo(mint);
 
-  /*
-   * Metadata can take a moment to appear in the registry.
-   * Retry twice before giving up.
-   */
-  if (!metadata && (!name || !symbol)) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      await sleep(1000);
-
-      metadata = await getSolanaMetadata(mint);
-
-      if (metadata) {
-        break;
-      }
+    if (
+      metadata ||
+      tokenInfo ||
+      event.name ||
+      event.symbol
+    ) {
+      break;
     }
+
+    await sleep(1000);
   }
 
   /*
-   * Merge event + metadata.
+   * Token information can come from several places.
    */
-  if (metadata) {
-    name =
-      name ||
-      clean(metadata.name);
 
-    symbol =
-      symbol ||
-      clean(metadata.symbol);
+  const name = clean(
+    event.name ||
+    tokenInfo?.name ||
+    metadata?.name
+  );
 
-    uri =
-      uri ||
-      clean(metadata.uri);
-  }
+  const symbol = clean(
+    event.symbol ||
+    tokenInfo?.symbol ||
+    metadata?.symbol
+  );
+
+  const uri = clean(
+    event.uri ||
+    tokenInfo?.uri ||
+    metadata?.uri
+  );
 
   /*
-   * If the event itself has no name/symbol and metadata is
-   * temporarily unavailable, we DO NOT create "Unknown Token".
-   *
-   * We simply skip that event rather than putting junk into
-   * the dashboard.
+   * Never create fake token names.
    */
+
   if (!name || !symbol) {
     console.warn(
-      "FLASHGUYS: Solana token metadata unavailable yet:",
+      "FLASHGUYS: Solana metadata still unavailable:",
       mint
     );
 
@@ -241,150 +231,214 @@ async function buildSolanaToken(event) {
   }
 
   /*
-   * Get image/social metadata.
+   * Fetch image/social information from the token URI.
    */
+
   let uriData = null;
 
   if (uri) {
-    uriData = await getUriMetadata(uri);
+    uriData =
+      await getUriMetadata(uri);
   }
 
-  const timestamp =
-    Number(
-      event.timestamp ||
-      metadata?.timestamp ||
-      Math.floor(Date.now() / 1000)
-    );
+  /*
+   * Timestamp.
+   *
+   * Shrine timestamps are Unix seconds.
+   */
 
-  const ageMinutes = Number.isFinite(timestamp)
-    ? Math.max(
-        0,
-        (Date.now() - timestamp * 1000) / 60000
-      )
-    : 0;
+  const timestamp = toNumber(
+    event.timestamp ||
+    tokenInfo?.timestamp ||
+    metadata?.timestamp ||
+    Math.floor(Date.now() / 1000)
+  );
 
-  const price =
-    Number(
-      metadata?.priceUSD ??
-      metadata?.price ??
-      event.priceUSD ??
-      event.price ??
-      0
-    );
+  const ageMinutes =
+    timestamp > 0
+      ? Math.max(
+          0,
+          (Date.now() -
+            timestamp * 1000) /
+            60000
+        )
+      : 0;
 
-  const marketCap =
-    Number(
-      metadata?.marketCapUSD ??
-      metadata?.marketCap ??
-      event.marketCap ??
-      0
-    );
+  /*
+   * Price.
+   *
+   * Prefer token-info because that endpoint contains
+   * live token information.
+   */
 
-  return {
+  const price = toNumber(
+    tokenInfo?.priceUSD ??
+    tokenInfo?.priceUsd ??
+    tokenInfo?.price ??
+    metadata?.priceUSD ??
+    metadata?.priceUsd ??
+    metadata?.price ??
+    event.priceUSD ??
+    event.priceUsd ??
+    event.price
+  );
+
+  /*
+   * Market cap.
+   */
+
+  const marketCap = toNumber(
+    tokenInfo?.marketCapUSD ??
+    tokenInfo?.marketCapUsd ??
+    tokenInfo?.marketCap ??
+    metadata?.marketCapUSD ??
+    metadata?.marketCapUsd ??
+    metadata?.marketCap ??
+    event.marketCapUSD ??
+    event.marketCapUsd ??
+    event.marketCap
+  );
+
+  /*
+   * Liquidity.
+   */
+
+  const liquidity = toNumber(
+    tokenInfo?.liquidityUSD ??
+    tokenInfo?.liquidityUsd ??
+    tokenInfo?.liquidity ??
+    metadata?.liquidityUSD ??
+    metadata?.liquidityUsd ??
+    metadata?.liquidity ??
+    event.liquidityUSD ??
+    event.liquidityUsd ??
+    event.liquidity
+  );
+
+  /*
+   * Volume.
+   */
+
+  const volume24h = toNumber(
+    tokenInfo?.volume24h ??
+    tokenInfo?.volume24hUSD ??
+    tokenInfo?.volumeUSD24h ??
+    metadata?.volume24h ??
+    metadata?.volume24hUSD ??
+    event.volume24h ??
+    event.volume24hUSD
+  );
+
+  /*
+   * 24h change.
+   */
+
+  const change24h = toNumber(
+    tokenInfo?.change24h ??
+    tokenInfo?.priceChange24h ??
+    metadata?.change24h ??
+    metadata?.priceChange24h ??
+    event.change24h ??
+    event.priceChange24h
+  );
+
+  const protocol = clean(
+    event.protocol ||
+    tokenInfo?.protocol ||
+    metadata?.protocol
+  );
+
+  const pool = clean(
+    event.pool ||
+    tokenInfo?.pool ||
+    metadata?.pool
+  );
+
+  const quote = clean(
+    event.quote ||
+    tokenInfo?.quote ||
+    metadata?.quote
+  );
+
+  const creator = clean(
+    event.creator ||
+    tokenInfo?.creator
+  );
+
+  const image =
+    uriData?.image ||
+    clean(tokenInfo?.image) ||
+    clean(metadata?.image) ||
+    null;
+
+  const token = {
     id: `solana-${mint}`,
 
     chain: "solana",
 
     name,
-
     symbol,
 
     address: mint,
-
     mint,
 
-    price: Number.isFinite(price)
-      ? price
-      : 0,
-
-    change24h:
-      Number(
-        event.change24h ??
-        metadata?.change24h ??
-        0
-      ) || 0,
-
-    volume24h:
-      Number(
-        event.volume24h ??
-        metadata?.volume24h ??
-        0
-      ) || 0,
-
-    liquidity:
-      Number(
-        event.liquidity ??
-        metadata?.liquidityUSD ??
-        metadata?.liquidity ??
-        0
-      ) || 0,
-
-    marketCap:
-      Number.isFinite(marketCap)
-        ? marketCap
-        : 0,
+    price,
+    change24h,
+    volume24h,
+    liquidity,
+    marketCap,
 
     ageMinutes,
 
     timestamp,
 
-    image:
-      uriData?.image ||
-      null,
+    image,
 
     description:
-      uriData?.description ||
-      "",
+      uriData?.description || "",
 
     website:
-      uriData?.website ||
-      "",
+      uriData?.website || "",
 
     twitter:
-      uriData?.twitter ||
-      "",
+      uriData?.twitter || "",
 
     telegram:
-      uriData?.telegram ||
-      "",
+      uriData?.telegram || "",
 
     uri,
 
-    protocol:
-      clean(
-        event.protocol ||
-        metadata?.protocol
-      ),
-
-    pool:
-      clean(
-        event.pool ||
-        metadata?.pool
-      ),
-
-    creator:
-      clean(
-        event.creator ||
-        ""
-      ),
-
-    quote:
-      clean(
-        event.quote ||
-        metadata?.quote
-      ),
+    protocol,
+    pool,
+    creator,
+    quote,
 
     source: "Shrine",
 
     live: true
   };
+
+  console.log(
+    "FLASHGUYS: Solana token ready:",
+    {
+      name: token.name,
+      symbol: token.symbol,
+      price: token.price,
+      liquidity: token.liquidity,
+      marketCap: token.marketCap,
+      volume24h: token.volume24h,
+      ageMinutes: token.ageMinutes,
+      image: token.image,
+      mint: token.mint
+    }
+  );
+
+  return token;
 }
 
-/*
-|--------------------------------------------------------------------------
-| SOLANA LIVE FEED
-|--------------------------------------------------------------------------
-*/
+/* ============================================================
+   SOLANA LIVE FEED
+   ============================================================ */
 
 function startSolanaFeed({
   onToken,
@@ -418,9 +472,6 @@ function startSolanaFeed({
       connected: true
     });
 
-    /*
-     * Subscribe to every supported Solana launch source.
-     */
     socket.emit(
       "subscribe_new_tokens",
       {
@@ -429,85 +480,76 @@ function startSolanaFeed({
     );
 
     console.log(
-      "FLASHGUYS: subscribed to Solana launches:",
+      "FLASHGUYS: Solana subscription sent:",
       SOLANA_PROTOCOLS
     );
   });
 
-  socket.on("new_token", async (event) => {
-    console.log(
-      "FLASHGUYS NEW SOLANA TOKEN:",
-      event
-    );
-
-    try {
-      const token =
-        await buildSolanaToken(event);
-
-      if (!token) {
-        console.log(
-          "FLASHGUYS: waiting for metadata:",
-          event?.mint
-        );
-
-        return;
-      }
-
+  socket.on(
+    "new_token",
+    async (event) => {
       console.log(
-        "FLASHGUYS: adding Solana token:",
-        token.name,
-        token.symbol,
-        token.address
+        "FLASHGUYS NEW SOLANA TOKEN:",
+        event
       );
 
-      onToken?.(token);
-    } catch (error) {
+      try {
+        const token =
+          await buildSolanaToken(event);
+
+        if (!token) {
+          return;
+        }
+
+        onToken?.(token);
+      } catch (error) {
+        console.error(
+          "FLASHGUYS Solana processing error:",
+          error
+        );
+
+        onError?.({
+          chain: "Solana",
+          error
+        });
+      }
+    }
+  );
+
+  socket.on(
+    "connect_error",
+    (error) => {
       console.error(
-        "FLASHGUYS: Solana token processing error:",
+        "FLASHGUYS Solana connection error:",
         error
       );
 
-      onError?.(error);
+      onStatus?.({
+        chain: "Solana",
+        connected: false
+      });
+
+      onError?.({
+        chain: "Solana",
+        error
+      });
     }
-  });
+  );
 
-  socket.on("token_update", (update) => {
-    /*
-     * Token updates are handled separately.
-     * The launch event is what creates the new-token row.
-     */
+  socket.on(
+    "disconnect",
+    (reason) => {
+      console.warn(
+        "FLASHGUYS Solana disconnected:",
+        reason
+      );
 
-    console.log(
-      "FLASHGUYS Solana token update:",
-      update
-    );
-  });
-
-  socket.on("connect_error", (error) => {
-    console.error(
-      "FLASHGUYS Solana connection error:",
-      error
-    );
-
-    onStatus?.({
-      chain: "Solana",
-      connected: false
-    });
-
-    onError?.(error);
-  });
-
-  socket.on("disconnect", (reason) => {
-    console.warn(
-      "FLASHGUYS Solana disconnected:",
-      reason
-    );
-
-    onStatus?.({
-      chain: "Solana",
-      connected: false
-    });
-  });
+      onStatus?.({
+        chain: "Solana",
+        connected: false
+      });
+    }
+  );
 
   return () => {
     console.log(
@@ -518,16 +560,12 @@ function startSolanaFeed({
   };
 }
 
-/*
-|--------------------------------------------------------------------------
-| ROBINHOOD CHAIN
-|--------------------------------------------------------------------------
-*/
+/* ============================================================
+   ROBINHOOD
+   ============================================================ */
 
 function buildRobinhoodToken(event) {
-  if (!event) {
-    return null;
-  }
+  if (!event) return null;
 
   const address = clean(
     event.token ||
@@ -536,14 +574,6 @@ function buildRobinhoodToken(event) {
 
   const name = clean(event.name);
   const symbol = clean(event.symbol);
-
-  /*
-   * Pons new_launch events contain name/symbol directly.
-   *
-   * new_pool events may have different fields and are not
-   * necessarily launches, so we only create a dashboard
-   * token when enough information is available.
-   */
 
   if (!address || !name || !symbol) {
     console.warn(
@@ -555,17 +585,20 @@ function buildRobinhoodToken(event) {
   }
 
   const timestamp =
-    Number(
+    toNumber(
       event.timestamp ||
       Math.floor(Date.now() / 1000)
     );
 
-  const ageMinutes = Number.isFinite(timestamp)
-    ? Math.max(
-        0,
-        (Date.now() - timestamp * 1000) / 60000
-      )
-    : 0;
+  const ageMinutes =
+    timestamp > 0
+      ? Math.max(
+          0,
+          (Date.now() -
+            timestamp * 1000) /
+            60000
+        )
+      : 0;
 
   return {
     id: `robinhood-${address}`,
@@ -573,35 +606,31 @@ function buildRobinhoodToken(event) {
     chain: "robinhood",
 
     name,
-
     symbol,
 
     address,
-
     token: address,
 
-    price:
-      Number(event.price || 0),
+    price: toNumber(event.price),
 
     change24h:
-      Number(event.change24h || 0),
+      toNumber(event.change24h),
 
     volume24h:
-      Number(event.volume24h || 0),
+      toNumber(event.volume24h),
 
     liquidity:
-      Number(event.liquidity || 0),
+      toNumber(event.liquidity),
 
     marketCap:
-      Number(event.marketCap || 0),
+      toNumber(event.marketCap),
 
     ageMinutes,
 
     timestamp,
 
     image:
-      event.image ||
-      null,
+      event.image || null,
 
     description:
       clean(event.description),
@@ -636,11 +665,9 @@ function buildRobinhoodToken(event) {
   };
 }
 
-/*
-|--------------------------------------------------------------------------
-| ROBINHOOD LIVE WEBSOCKET
-|--------------------------------------------------------------------------
-*/
+/* ============================================================
+   ROBINHOOD LIVE WEBSOCKET
+   ============================================================ */
 
 function startRobinhoodFeed({
   onToken,
@@ -683,9 +710,6 @@ function startRobinhoodFeed({
           event
         );
 
-        /*
-         * We want actual new launches.
-         */
         if (
           event.type !== "new_launch"
         ) {
@@ -695,16 +719,7 @@ function startRobinhoodFeed({
         const token =
           buildRobinhoodToken(event);
 
-        if (!token) {
-          return;
-        }
-
-        console.log(
-          "FLASHGUYS: adding Robinhood token:",
-          token.name,
-          token.symbol,
-          token.address
-        );
+        if (!token) return;
 
         onToken?.(token);
       } catch (error) {
@@ -766,11 +781,9 @@ function startRobinhoodFeed({
   };
 }
 
-/*
-|--------------------------------------------------------------------------
-| PUBLIC START FUNCTION
-|--------------------------------------------------------------------------
-*/
+/* ============================================================
+   PUBLIC API
+   ============================================================ */
 
 export function startLiveFeeds({
   onToken,
@@ -778,7 +791,7 @@ export function startLiveFeeds({
   onError
 }) {
   console.log(
-    "================================================"
+    "=============================================="
   );
 
   console.log(
@@ -796,7 +809,7 @@ export function startLiveFeeds({
   );
 
   console.log(
-    "================================================"
+    "=============================================="
   );
 
   const stopSolana =

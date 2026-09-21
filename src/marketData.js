@@ -81,6 +81,9 @@ function normalizeDexPair(pair) {
     marketCap: Number(pair.marketCap || pair.fdv || 0),
     ageMinutes,
     image: pair.info?.imageUrl || null,
+    pairAddress: pair.pairAddress || "",
+    chainId: pair.chainId || "solana",
+    url: pair.url || "",
     source: "DexScreener"
   };
 }

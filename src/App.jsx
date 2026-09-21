@@ -236,6 +236,21 @@ function ChainBadge({ chain }) {
 }
 
 function TokenIcon({ token }) {
+  const [failed, setFailed] = useState(false);
+
+  if (token.image && !failed) {
+    return (
+      <div className={`token-icon ${token.chain} has-image`}>
+        <img
+          src={token.image}
+          alt={`${token.name} logo`}
+          loading="lazy"
+          onError={() => setFailed(true)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className={`token-icon ${token.chain}`}>
       {token.symbol.slice(0, 2)}
@@ -663,7 +678,19 @@ const [liveStatus, setLiveStatus] = useState({
 
             {!loading &&
               filteredTokens.map((token) => (
-                <div className="token-table token-row" key={token.id}>
+                <div
+                  className="token-table token-row"
+                  key={token.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedToken(token)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelectedToken(token);
+                    }
+                  }}
+                >
                   <div className="token-cell">
                     <TokenIcon token={token} />
 
@@ -821,6 +848,132 @@ const [liveStatus, setLiveStatus] = useState({
           <span>Launch</span>
         </div>
       </footer>
+
+      {selectedToken && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setSelectedToken(null)}
+        >
+          <div
+            className="token-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div className="token-modal-title">
+                <TokenIcon token={selectedToken} />
+
+                <div>
+                  <h2>
+                    {selectedToken.name}
+                    <span className="token-modal-symbol">
+                      {selectedToken.symbol}
+                    </span>
+                  </h2>
+                  <ChainBadge chain={selectedToken.chain} />
+                </div>
+              </div>
+
+              <button
+                className="icon-button"
+                onClick={() => setSelectedToken(null)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="token-modal-stats">
+              <div className="modal-stat">
+                <span>Price</span>
+                <strong>{formatMoney(Number(selectedToken.price))}</strong>
+              </div>
+
+              <div className="modal-stat">
+                <span>24h</span>
+                <strong
+                  className={
+                    Number(selectedToken.change24h) >= 0
+                      ? "positive"
+                      : "negative"
+                  }
+                >
+                  {Number(selectedToken.change24h) >= 0 ? "+" : ""}
+                  {Number(selectedToken.change24h).toFixed(1)}%
+                </strong>
+              </div>
+
+              <div className="modal-stat">
+                <span>Volume</span>
+                <strong>{formatMoney(Number(selectedToken.volume24h))}</strong>
+              </div>
+
+              <div className="modal-stat">
+                <span>Liquidity</span>
+                <strong>
+                  {formatMoney(Number(selectedToken.liquidity))}
+                </strong>
+              </div>
+
+              {selectedToken.marketCap > 0 && (
+                <div className="modal-stat">
+                  <span>Market Cap</span>
+                  <strong>
+                    {formatMoney(Number(selectedToken.marketCap))}
+                  </strong>
+                </div>
+              )}
+
+              <div className="modal-stat">
+                <span>Age</span>
+                <strong>{formatAge(Number(selectedToken.ageMinutes))}</strong>
+              </div>
+            </div>
+
+            <div className="token-chart">
+              {selectedToken.pairAddress ? (
+                <iframe
+                  title={`${selectedToken.symbol} price chart`}
+                  src={`https://dexscreener.com/${
+                    selectedToken.chainId || "solana"
+                  }/${selectedToken.pairAddress}?embed=1&theme=dark&info=0&trades=0`}
+                  loading="lazy"
+                />
+              ) : (
+                <div className="chart-empty">
+                  <BarChart3 size={26} />
+                  <p>
+                    Live chart is not available for this token yet. It streams
+                    in over the live feed before a market index is ready.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="token-modal-footer">
+              <div className="token-address">
+                <span>Contract</span>
+                <code>{shortenAddress(selectedToken.address)}</code>
+              </div>
+
+              {(selectedToken.url || selectedToken.pairAddress) && (
+                <a
+                  className="primary-button"
+                  href={
+                    selectedToken.url ||
+                    `https://dexscreener.com/${
+                      selectedToken.chainId || "solana"
+                    }/${selectedToken.pairAddress}`
+                  }
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open on DexScreener
+                  <ExternalLink size={15} />
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showLaunch && (
         <div

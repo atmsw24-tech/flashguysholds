@@ -1,51 +1,113 @@
+// src/liveFeeds.js
+
 import { io } from "socket.io-client";
 
-const SOLANA_SOCKET_URL = "https://sol.shrine.trade";
+/*
+ * FLASHGUYS LIVE FEEDS
+ *
+ * Solana:
+ *   Shrine real-time new-token feed
+ *   + Shrine metadata lookup
+ *   + token URI metadata for images/socials
+ *
+ * Robinhood Chain:
+ *   Shrine Pons / Uniswap V4 launch feed
+ *
+ * IMPORTANT:
+ *   Incomplete tokens are NEVER sent to App.jsx.
+ */
+
+const SOLANA_SOCKET_URL =
+  "https://sol.shrine.trade";
+
+const SOLANA_METADATA_URL =
+  "https://sol.shrine.trade/metadata";
+
+const SOLANA_TOKEN_INFO_URL =
+  "https://sol.shrine.trade/api/token-info";
+
 const ROBINHOOD_WS_URL =
   "wss://api.shrine.trade/rh/api/launches/ws";
 
-const SOLANA_PROTOCOLS = [
-  "PUMPFUN",
-  "PUMPSWAP",
-  "METEORA",
-  "RAYDIUM",
-  "ORCA",
-  "BONK",
-  "STONKFUN"
-];
 
-/* =====================================================
-   SOLANA TOKEN INFORMATION
-===================================================== */
+/* =========================================================
+   HELPERS
+========================================================= */
 
-async function getSolanaTokenInfo(mint) {
+function number(value) {
+  const n = Number(value);
+
+  return Number.isFinite(n)
+    ? n
+    : 0;
+}
+
+
+function cleanString(value) {
+  if (
+    typeof value !== "string"
+  ) {
+    return "";
+  }
+
+  return value.trim();
+}
+
+
+function ipfsToHttp(uri) {
+  if (!uri) {
+    return "";
+  }
+
+  if (
+    uri.startsWith("ipfs://")
+  ) {
+    return (
+      "https://ipfs.io/ipfs/" +
+      uri.replace("ipfs://", "")
+    );
+  }
+
+  return uri;
+}
+
+
+/* =========================================================
+   FETCH SOLANA METADATA
+========================================================= */
+
+async function getSolanaMetadata(
+  mint
+) {
+  if (!mint) {
+    return null;
+  }
+
   try {
     const url =
-      `https://sol.shrine.trade/api/token-info?mint=${encodeURIComponent(mint)}`;
+      `${SOLANA_METADATA_URL}?mint=${encodeURIComponent(mint)}`;
 
-    console.log("🔎 FLASHGUYS: Getting token info:", mint);
-
-    const response = await fetch(url);
+    const response =
+      await fetch(url, {
+        headers: {
+          accept: "application/json"
+        },
+        cache: "no-store"
+      });
 
     if (!response.ok) {
-      console.warn(
-        "⚠️ FLASHGUYS: Token info HTTP error:",
-        response.status
-      );
       return null;
     }
 
-    const data = await response.json();
+    const data =
+      await response.json();
 
-    console.log(
-      "✅ FLASHGUYS: Token info received:",
-      data
-    );
+    return data || null;
 
-    return data;
   } catch (error) {
-    console.error(
-      "❌ FLASHGUYS: Token info error:",
+
+    console.warn(
+      "FLASHGUYS metadata lookup failed:",
       error
     );
 
@@ -53,297 +115,445 @@ async function getSolanaTokenInfo(mint) {
   }
 }
 
-/* =====================================================
-   URI METADATA / IMAGE
-===================================================== */
 
-async function getUriMetadata(uri) {
+/*
+ * Backup token-info endpoint.
+ */
+
+async function getSolanaTokenInfo(
+  mint
+) {
+  if (!mint) {
+    return null;
+  }
+
   try {
-    if (!uri) return null;
 
-    let url = uri;
+    const url =
+      `${SOLANA_TOKEN_INFO_URL}?mint=${encodeURIComponent(mint)}`;
 
-    if (url.startsWith("ipfs://")) {
-      url =
-        "https://ipfs.io/ipfs/" +
-        url.substring(7);
+    const response =
+      await fetch(url, {
+        headers: {
+          accept: "application/json"
+        },
+        cache: "no-store"
+      });
+
+    if (!response.ok) {
+      return null;
     }
 
-    const response = await fetch(url);
+    return await response.json();
 
-    if (!response.ok) return null;
+  } catch {
 
-    const data = await response.json();
+    return null;
+  }
+}
 
-    let image = data.image || null;
 
-    if (image?.startsWith("ipfs://")) {
-      image =
-        "https://ipfs.io/ipfs/" +
-        image.substring(7);
+/* =========================================================
+   FETCH OFF-CHAIN TOKEN URI
+========================================================= */
+
+async function getUriMetadata(
+  uri
+) {
+  const url =
+    ipfsToHttp(uri);
+
+  if (!url) {
+    return null;
+  }
+
+  try {
+
+    const response =
+      await fetch(url, {
+        headers: {
+          accept: "application/json"
+        },
+        cache: "no-store"
+      });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const metadata =
+      await response.json();
+
+    if (!metadata) {
+      return null;
     }
 
     return {
-      image,
-      description: data.description || "",
+      image:
+        metadata.image ||
+        metadata.imageUrl ||
+        metadata.logo ||
+        "",
+
+      description:
+        metadata.description ||
+        "",
+
       website:
-        data.website ||
-        data.external_url ||
-        null,
-      twitter: data.twitter || null,
-      telegram: data.telegram || null
+        metadata.website ||
+        "",
+
+      twitter:
+        metadata.twitter ||
+        metadata.x ||
+        "",
+
+      telegram:
+        metadata.telegram ||
+        ""
     };
-  } catch (error) {
-    console.warn(
-      "⚠️ FLASHGUYS: URI metadata error:",
-      error
-    );
+
+  } catch {
 
     return null;
   }
 }
 
-/* =====================================================
-   PROCESS SOLANA NEW TOKEN
-===================================================== */
 
-async function processSolanaToken(data, onToken) {
-  if (!data) return;
+/* =========================================================
+   PROCESS SOLANA TOKEN
+========================================================= */
 
-  const mint =
-    data.mint ||
-    data.address;
-
-  if (!mint) {
-    console.warn(
-      "⚠️ FLASHGUYS: Solana event has no mint:",
-      data
-    );
+async function processSolanaToken(
+  data,
+  onToken
+) {
+  if (!data) {
     return;
   }
 
+  const mint =
+    cleanString(
+      data.mint ||
+      data.address ||
+      data.token
+    );
+
+  if (!mint) {
+    return;
+  }
+
+
   console.log(
-    "🚨 FLASHGUYS: NEW SOLANA COIN DETECTED:",
+    "FLASHGUYS: Solana token detected:",
     mint
   );
 
+
   /*
-   * IMPORTANT:
-   * We DO NOT send an Unknown Token to the UI here.
-   *
-   * First we get the real token information.
+   * First use metadata endpoint.
    */
 
-  const info =
-    await getSolanaTokenInfo(mint);
+  let metadata =
+    await getSolanaMetadata(mint);
 
-  if (!info) {
-    console.warn(
-      "⚠️ FLASHGUYS: Could not get information for:",
+
+  /*
+   * If metadata endpoint doesn't have it yet,
+   * try token-info as backup.
+   */
+
+  if (!metadata) {
+    metadata =
+      await getSolanaTokenInfo(mint);
+  }
+
+
+  /*
+   * Extract name and symbol.
+   */
+
+  const name =
+    cleanString(
+      metadata?.name ||
+      data.name
+    );
+
+  const symbol =
+    cleanString(
+      metadata?.symbol ||
+      data.symbol
+    );
+
+
+  /*
+   * IMPORTANT:
+   *
+   * Never create:
+   *
+   * Unknown Token
+   * UNKNOWN
+   *
+   * If metadata isn't ready yet, simply wait.
+   */
+
+  if (!name || !symbol) {
+
+    console.log(
+      "FLASHGUYS: Solana token waiting for metadata:",
       mint
     );
 
     return;
   }
 
-  const name =
-    info.name ||
-    data.name ||
-    "Unnamed Token";
 
-  const symbol =
-    info.symbol ||
-    data.symbol ||
-    "UNKNOWN";
+  /*
+   * URI can come from:
+   *
+   * 1. metadata endpoint
+   * 2. original event
+   */
 
   const uri =
-    info.uri ||
+    metadata?.uri ||
     data.uri ||
-    null;
+    "";
 
-  let extra = null;
 
-  if (uri) {
-    extra =
-      await getUriMetadata(uri);
-  }
+  /*
+   * Get image/social metadata.
+   */
+
+  const uriData =
+    await getUriMetadata(uri);
+
+
+  /*
+   * Build final token.
+   */
+
+  const timestamp =
+    number(
+      data.timestamp
+    );
+
+  const ageMinutes =
+    timestamp > 0
+      ? Math.max(
+          0,
+          Math.floor(
+            (Date.now() / 1000 -
+              timestamp) /
+              60
+          )
+        )
+      : 0;
+
 
   const token = {
-    id: `solana-${mint}`,
 
-    chain: "solana",
-    network: "solana",
+    id:
+      `solana-${mint}`,
+
+    chain:
+      "solana",
 
     name,
+
     symbol,
 
-    address: mint,
+    address:
+      mint,
+
     mint,
 
-    protocol:
-      info.protocol ||
-      data.protocol ||
-      "Solana",
+    price:
+      number(
+        data.priceUSD ??
+        data.priceUsd ??
+        metadata?.priceUSD ??
+        metadata?.price
+      ),
 
-    pool:
-      info.pool ||
-      data.pool ||
-      null,
+    change24h:
+      number(
+        data.change24h
+      ),
 
-    quote:
-      info.quote ||
-      data.quote ||
-      null,
+    volume24h:
+      number(
+        data.volume24h
+      ),
 
-    decimals:
-      info.decimals ??
-      data.decimals ??
-      null,
+    liquidity:
+      number(
+        data.liquidity
+      ),
 
-    supply:
-      info.total_supply ??
-      info.supply ??
-      data.supply ??
-      null,
+    marketCap:
+      number(
+        data.marketCapUSD ??
+        data.marketCap ??
+        metadata?.marketCapUSD
+      ),
 
-    uri,
+    ageMinutes,
 
     image:
-      extra?.image ||
-      null,
+      uriData?.image ||
+      data.image ||
+      data.imageUrl ||
+      "",
 
     description:
-      extra?.description ||
+      uriData?.description ||
+      data.description ||
       "",
 
     website:
-      extra?.website ||
-      null,
+      uriData?.website ||
+      data.website ||
+      "",
 
     twitter:
-      extra?.twitter ||
-      null,
+      uriData?.twitter ||
+      data.twitter ||
+      "",
 
     telegram:
-      extra?.telegram ||
-      null,
+      uriData?.telegram ||
+      data.telegram ||
+      "",
 
-    price:
-      info.priceUSD ??
-      info.price ??
-      null,
+    pairAddress:
+      metadata?.pool ||
+      data.pool ||
+      data.pairAddress ||
+      "",
 
-    marketCap:
-      info.marketCapUSD ??
-      info.marketCap ??
-      null,
+    protocol:
+      data.protocol ||
+      metadata?.program ||
+      "",
 
-    liquidity:
-      info.liquidityUSD ??
-      info.liquidity ??
-      null,
+    quote:
+      data.quote ||
+      metadata?.quote ||
+      "",
 
-    volume24h:
-      info.volumeUSD24h ??
-      info.volume24h ??
-      null,
+    uri,
 
-    change24h:
-      info.change24h ??
-      null,
+    source:
+      "Shrine",
 
-    creator:
-      info.creator ||
-      data.creator ||
-      null,
-
-    createdAt:
-      data.timestamp ||
-      Date.now(),
-
-    live: true,
-
-    source: "Shrine Solana"
+    live:
+      true
   };
 
-  console.log(
-    "🟢 FLASHGUYS: COMPLETE SOLANA TOKEN:",
-    token
-  );
 
   /*
-   * ONLY NOW send it to the website.
+   * Final safety check.
    */
-  onToken?.(token);
-}
 
-/* =====================================================
-   SOLANA LIVE FEED
-===================================================== */
+  if (
+    !token.name ||
+    !token.symbol ||
+    !token.address
+  ) {
 
-export function startSolanaLiveFeed({
-  onToken,
-  onStatus,
-  onError
-} = {}) {
+    console.warn(
+      "FLASHGUYS: rejected incomplete Solana token",
+      token
+    );
+
+    return;
+  }
+
 
   console.log(
-    "⚡ FLASHGUYS: Starting Solana live feed..."
+    "FLASHGUYS: valid Solana token:",
+    token.name,
+    token.symbol
   );
 
-  const socket = io(
-    SOLANA_SOCKET_URL,
-    {
-      transports: ["websocket"],
 
-      reconnection: true,
+  onToken(token);
+}
 
-      reconnectionAttempts: Infinity,
 
-      reconnectionDelay: 1000,
+/* =========================================================
+   SOLANA LIVE FEED
+========================================================= */
 
-      reconnectionDelayMax: 10000
+function startSolanaFeed(
+  onStatus,
+  onToken,
+  onError
+) {
+
+  const socket =
+    io(
+      SOLANA_SOCKET_URL,
+      {
+        transports: [
+          "websocket"
+        ],
+
+        reconnection:
+          true,
+
+        reconnectionAttempts:
+          Infinity,
+
+        reconnectionDelay:
+          2000,
+
+        reconnectionDelayMax:
+          10000
+      }
+    );
+
+
+  socket.on(
+    "connect",
+    () => {
+
+      console.log(
+        "FLASHGUYS: Solana live feed connected"
+      );
+
+      onStatus({
+        chain:
+          "Solana",
+
+        connected:
+          true
+      });
+
+
+      /*
+       * Subscribe to real-time
+       * token creations.
+       */
+
+      socket.emit(
+        "subscribe_new_tokens",
+        {
+          protocols: [
+            "PUMPFUN",
+            "PUMPSWAP",
+            "METEORA",
+            "RAYDIUM",
+            "ORCA",
+            "BONK",
+            "STONKFUN"
+          ]
+        }
+      );
     }
   );
 
-  socket.on("connect", () => {
-
-    console.log(
-      "🟢 FLASHGUYS: SOLANA CONNECTED:",
-      socket.id
-    );
-
-    onStatus?.({
-      chain: "Solana",
-      connected: true,
-      message:
-        "Solana live feed connected"
-    });
-
-    console.log(
-      "📡 FLASHGUYS: Subscribing to new tokens..."
-    );
-
-    socket.emit(
-      "subscribe_new_tokens",
-      {
-        protocols:
-          SOLANA_PROTOCOLS
-      },
-      (response) => {
-
-        console.log(
-          "📡 FLASHGUYS: Subscription response:",
-          response
-        );
-
-      }
-    );
-  });
-
-  /* ---------------------------------------------
-     NEW TOKEN EVENT
-  --------------------------------------------- */
 
   socket.on(
     "new_token",
@@ -352,273 +562,223 @@ export function startSolanaLiveFeed({
       processSolanaToken(
         data,
         onToken
+      ).catch(
+        (error) => {
+          console.warn(
+            "FLASHGUYS Solana token processing error:",
+            error
+          );
+        }
       );
     }
   );
 
-  /* ---------------------------------------------
-     TOKEN UPDATE
-  --------------------------------------------- */
+
+  /*
+   * Live price update.
+   *
+   * These updates may not contain
+   * name/symbol, so we DO NOT create
+   * a new token from them.
+   */
 
   socket.on(
     "token_update",
     (data) => {
 
-      if (!data) return;
+      if (!data) {
+        return;
+      }
 
       const mint =
         data.mint ||
         data.address;
 
-      if (!mint) return;
+      if (!mint) {
+        return;
+      }
 
-      console.log(
-        "📈 FLASHGUYS: Token update:",
-        mint
-      );
+      /*
+       * Only send an update if it contains
+       * enough identity information.
+       *
+       * App.jsx can merge this later.
+       */
 
-      onToken?.({
+      onToken({
 
         id:
           `solana-${mint}`,
 
-        chain: "solana",
+        chain:
+          "solana",
 
-        network: "solana",
-
-        address: mint,
+        address:
+          mint,
 
         mint,
 
         price:
-          data.priceUSD ??
-          data.price ??
-          null,
-
-        marketCap:
-          data.mcapUSD ??
-          data.marketCap ??
-          null,
-
-        liquidity:
-          data.liquidityUSD ??
-          data.liquidity ??
-          null,
-
-        volume24h:
-          data.volumeUSD24h ??
-          data.volume24h ??
-          null,
+          number(
+            data.priceUSD ??
+            data.priceUsd
+          ),
 
         change24h:
-          data.change24h ??
-          null,
+          number(
+            data.change24h
+          ),
 
-        live: true,
+        volume24h:
+          number(
+            data.volume24h
+          ),
 
-        source: "Shrine Solana"
+        liquidity:
+          number(
+            data.liquidity
+          ),
+
+        marketCap:
+          number(
+            data.marketCapUSD ??
+            data.marketCap
+          ),
+
+        live:
+          true,
+
+        partial:
+          true
       });
     }
   );
+
 
   socket.on(
     "connect_error",
     (error) => {
 
-      console.error(
-        "❌ FLASHGUYS: Solana connection error:",
+      console.warn(
+        "FLASHGUYS Solana connection error:",
+        error?.message ||
         error
       );
 
-      onError?.({
-        chain: "Solana",
-        error,
-        message:
-          "Solana live connection error"
+      onStatus({
+        chain:
+          "Solana",
+
+        connected:
+          false
       });
+
+      onError?.(
+        error
+      );
     }
   );
+
 
   socket.on(
     "disconnect",
     (reason) => {
 
       console.warn(
-        "🟡 FLASHGUYS: Solana disconnected:",
+        "FLASHGUYS Solana disconnected:",
         reason
       );
 
-      onStatus?.({
-        chain: "Solana",
-        connected: false,
-        message:
-          `Solana disconnected: ${reason}`
+      onStatus({
+        chain:
+          "Solana",
+
+        connected:
+          false
       });
     }
   );
 
+
   return () => {
 
-    console.log(
-      "🛑 FLASHGUYS: Stopping Solana feed"
-    );
+    try {
+
+      socket.emit(
+        "unsubscribe_new_tokens",
+        {
+          protocols: [
+            "PUMPFUN",
+            "PUMPSWAP",
+            "METEORA",
+            "RAYDIUM",
+            "ORCA",
+            "BONK",
+            "STONKFUN"
+          ]
+        }
+      );
+
+    } catch {
+      // Ignore cleanup errors.
+    }
 
     socket.disconnect();
   };
 }
 
-/* =====================================================
-   ROBINHOOD CHAIN TOKEN
-===================================================== */
 
-function normalizeRobinhoodToken(data) {
+/* =========================================================
+   ROBINHOOD CHAIN
+========================================================= */
 
-  return {
-
-    id:
-      `robinhood-${
-        data.token ||
-        data.poolId ||
-        Date.now()
-      }`,
-
-    chain: "robinhood",
-
-    network: "robinhood",
-
-    name:
-      data.name ||
-      "New Token",
-
-    symbol:
-      data.symbol ||
-      "UNKNOWN",
-
-    address:
-      data.token ||
-      "",
-
-    protocol:
-      data.protocol ||
-      "Robinhood Chain",
-
-    eventType:
-      data.type ||
-      null,
-
-    price:
-      data.price ??
-      null,
-
-    marketCap:
-      data.marketCap ??
-      null,
-
-    liquidity:
-      data.liquidity ??
-      null,
-
-    volume24h:
-      data.volume24h ??
-      null,
-
-    change24h:
-      data.change24h ??
-      null,
-
-    image:
-      data.image ||
-      data.logo ||
-      null,
-
-    creator:
-      data.deployer ||
-      data.creator ||
-      null,
-
-    description:
-      data.description ||
-      "",
-
-    uri:
-      data.uri ||
-      null,
-
-    poolId:
-      data.poolId ||
-      null,
-
-    curve:
-      data.curve ||
-      null,
-
-    txHash:
-      data.txHash ||
-      null,
-
-    blockNumber:
-      data.blockNumber ||
-      null,
-
-    createdAt:
-      data.timestamp ||
-      Date.now(),
-
-    live: true,
-
-    source:
-      "Shrine Robinhood Chain"
-  };
-}
-
-/* =====================================================
-   ROBINHOOD CHAIN LIVE FEED
-===================================================== */
-
-export function startRobinhoodLiveFeed({
-  onToken,
+function startRobinhoodFeed(
   onStatus,
+  onToken,
   onError
-} = {}) {
+) {
 
-  console.log(
-    "⚡ FLASHGUYS: Starting Robinhood Chain feed..."
-  );
-
-  let websocket = null;
-
+  let socket;
   let reconnectTimer = null;
-
   let stopped = false;
+
 
   function connect() {
 
-    if (stopped) return;
+    if (stopped) {
+      return;
+    }
 
-    websocket =
+
+    console.log(
+      "FLASHGUYS: connecting to Robinhood Chain live feed..."
+    );
+
+
+    socket =
       new WebSocket(
         ROBINHOOD_WS_URL
       );
 
-    websocket.onopen = () => {
+
+    socket.onopen = () => {
 
       console.log(
-        "🟢 FLASHGUYS: Robinhood Chain connected"
+        "FLASHGUYS: Robinhood Chain live feed connected"
       );
 
-      onStatus?.({
+      onStatus({
         chain:
-          "Robinhood Chain",
+          "Robinhood",
 
-        connected: true,
-
-        message:
-          "Robinhood Chain connected"
+        connected:
+          true
       });
     };
 
-    websocket.onmessage =
-      (event) => {
+
+    socket.onmessage =
+      async (event) => {
 
         try {
 
@@ -627,93 +787,89 @@ export function startRobinhoodLiveFeed({
               event.data
             );
 
+
           console.log(
-            "🚨 FLASHGUYS: Robinhood event:",
+            "FLASHGUYS Robinhood event:",
             data
           );
 
-          if (
-            data.type ===
-              "new_launch" ||
-            data.type ===
-              "graduated" ||
-            data.type ===
-              "new_pool"
-          ) {
 
-            const token =
-              normalizeRobinhoodToken(
-                data
-              );
+          const token =
+            normalizeRobinhoodToken(
+              data
+            );
 
-            onToken?.(token);
+
+          if (!token) {
+            return;
           }
+
+
+          onToken(token);
 
         } catch (error) {
 
-          console.error(
-            "❌ FLASHGUYS: Robinhood message error:",
+          console.warn(
+            "FLASHGUYS Robinhood event error:",
             error
           );
 
-          onError?.({
-            chain:
-              "Robinhood Chain",
-
-            error,
-
-            message:
-              "Invalid Robinhood message"
-          });
+          onError?.(
+            error
+          );
         }
       };
 
-    websocket.onerror =
+
+    socket.onerror =
       (error) => {
 
-        console.error(
-          "❌ FLASHGUYS: Robinhood WebSocket error:",
+        console.warn(
+          "FLASHGUYS Robinhood socket error:",
           error
         );
 
-        onError?.({
-          chain:
-            "Robinhood Chain",
-
-          error,
-
-          message:
-            "Robinhood Chain error"
-        });
+        onError?.(
+          error
+        );
       };
 
-    websocket.onclose = () => {
 
-      if (stopped) return;
+    socket.onclose =
+      () => {
 
-      onStatus?.({
-        chain:
-          "Robinhood Chain",
-
-        connected: false,
-
-        message:
-          "Robinhood Chain disconnected"
-      });
-
-      reconnectTimer =
-        setTimeout(
-          connect,
-          3000
+        console.warn(
+          "FLASHGUYS Robinhood feed disconnected"
         );
-    };
+
+        onStatus({
+          chain:
+            "Robinhood",
+
+          connected:
+            false
+        });
+
+
+        if (!stopped) {
+
+          reconnectTimer =
+            setTimeout(
+              connect,
+              3000
+            );
+        }
+      };
   }
 
+
   connect();
+
 
   return () => {
 
     stopped = true;
+
 
     if (reconnectTimer) {
       clearTimeout(
@@ -721,40 +877,269 @@ export function startRobinhoodLiveFeed({
       );
     }
 
-    if (websocket) {
-      websocket.close();
+
+    try {
+      socket?.close();
+    } catch {
+      // Ignore cleanup errors.
     }
   };
 }
 
-/* =====================================================
-   START BOTH CHAINS
-===================================================== */
+
+/* =========================================================
+   ROBINHOOD NORMALIZER
+========================================================= */
+
+function normalizeRobinhoodToken(
+  data
+) {
+
+  if (!data) {
+    return null;
+  }
+
+
+  /*
+   * Only token lifecycle events.
+   */
+
+  const type =
+    cleanString(
+      data.type
+    );
+
+
+  if (
+    type !== "new_launch" &&
+    type !== "graduated" &&
+    type !== "new_pool"
+  ) {
+
+    return null;
+  }
+
+
+  /*
+   * Current Shrine Robinhood feed
+   * uses "token".
+   */
+
+  const address =
+    cleanString(
+      data.token ||
+      data.address ||
+      data.tokenAddress
+    );
+
+
+  /*
+   * new_pool events can be pool-only
+   * and therefore may not contain a
+   * token address.
+   */
+
+  if (!address) {
+
+    console.log(
+      "FLASHGUYS: Robinhood event has no token address:",
+      data
+    );
+
+    return null;
+  }
+
+
+  const name =
+    cleanString(
+      data.name
+    );
+
+  const symbol =
+    cleanString(
+      data.symbol
+    );
+
+
+  /*
+   * Never display placeholders.
+   */
+
+  if (!name || !symbol) {
+
+    console.log(
+      "FLASHGUYS: Robinhood token missing name/symbol:",
+      data
+    );
+
+    return null;
+  }
+
+
+  const timestamp =
+    number(
+      data.timestamp
+    );
+
+
+  const ageMinutes =
+    timestamp > 0
+      ? Math.max(
+          0,
+          Math.floor(
+            (Date.now() / 1000 -
+              timestamp) /
+              60
+          )
+        )
+      : 0;
+
+
+  const socials =
+    data.socials ||
+    {};
+
+
+  return {
+
+    id:
+      `robinhood-${address.toLowerCase()}`,
+
+    chain:
+      "robinhood",
+
+    name,
+
+    symbol,
+
+    address,
+
+    token:
+      address,
+
+    price:
+      number(
+        data.priceUSD ??
+        data.priceUsd ??
+        data.price
+      ),
+
+    change24h:
+      number(
+        data.change24h
+      ),
+
+    volume24h:
+      number(
+        data.volume24h
+      ),
+
+    liquidity:
+      number(
+        data.liquidity
+      ),
+
+    marketCap:
+      number(
+        data.marketCapUSD ??
+        data.marketCap
+      ),
+
+    ageMinutes,
+
+    image:
+      data.image ||
+      data.imageUrl ||
+      "",
+
+    description:
+      data.description ||
+      "",
+
+    website:
+      socials.website ||
+      data.website ||
+      "",
+
+    twitter:
+      socials.twitter ||
+      "",
+
+    telegram:
+      socials.telegram ||
+      "",
+
+    uri:
+      data.uri ||
+      "",
+
+    curve:
+      data.curve ||
+      "",
+
+    deployer:
+      data.deployer ||
+      "",
+
+    txHash:
+      data.txHash ||
+      "",
+
+    blockNumber:
+      data.blockNumber ||
+      null,
+
+    protocol:
+      data.protocol ||
+      "",
+
+    eventType:
+      type,
+
+    pairToken:
+      data.pairToken ||
+      "ETH",
+
+    source:
+      "Shrine",
+
+    live:
+      true
+  };
+}
+
+
+/* =========================================================
+   START BOTH
+========================================================= */
 
 export function startLiveFeeds({
-  onToken,
   onStatus,
+  onToken,
   onError
-} = {}) {
+}) {
 
   const stopSolana =
-    startSolanaLiveFeed({
-      onToken,
+    startSolanaFeed(
       onStatus,
+      onToken,
       onError
-    });
+    );
+
 
   const stopRobinhood =
-    startRobinhoodLiveFeed({
-      onToken,
+    startRobinhoodFeed(
       onStatus,
+      onToken,
       onError
-    });
+    );
+
 
   return () => {
 
     stopSolana?.();
 
     stopRobinhood?.();
+
   };
 }

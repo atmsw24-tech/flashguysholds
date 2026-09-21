@@ -1,8 +1,6 @@
 import { io } from "socket.io-client";
 
 const SOLANA_SOCKET_URL = "https://sol.shrine.trade";
-const ROBINHOOD_WS_URL =
-  "wss://api.shrine.trade/rh/api/launches/ws";
 
 const SOLANA_PROTOCOLS = [
   "PUMPFUN",
@@ -14,23 +12,45 @@ const SOLANA_PROTOCOLS = [
   "STONKFUN"
 ];
 
+const MAX_QUEUE_SIZE = 500;
+const ENRICH_DELAY_MS = 350;
+
+let stopped = false;
+let socket = null;
+
+const enrichmentQueue = [];
+const queuedMints = new Set();
+const processedMints = new Set();
+const subscribedMints = new Set();
+
+let processingQueue = false;
+
 function clean(value) {
-  if (value === undefined || value === null) return "";
+  if (value === undefined || value === null) {
+    return "";
+  }
+
   return String(value).trim();
 }
 
-function toNumber(value, fallback = 0) {
+function toNumber(value) {
   const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
+
+  return Number.isFinite(number) ? number : 0;
 }
 
 function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
-async function getJson(url, timeoutMs = 8000) {
+async function getJson(url, timeoutMs = 10000) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
 
   try {
     const response = await fetch(url, {
@@ -47,492 +67,711 @@ async function getJson(url, timeoutMs = 8000) {
         response.status,
         url
       );
+
       return null;
     }
 
     return await response.json();
   } catch (error) {
     console.warn(
-      "FLASHGUYS fetch failed:",
+      "FLASHGUYS request failed:",
       url,
       error
     );
 
     return null;
   } finally {
-    clearTimeout(timer);
+    clearTimeout(timeout);
   }
 }
 
-/* ============================================================
-   SOLANA METADATA
-   ============================================================ */
+function normalizeIpfs(uri) {
+  if (!uri) {
+    return "";
+  }
 
-async function getSolanaMetadata(mint) {
-  if (!mint) return null;
-
-  return await getJson(
-    `https://sol.shrine.trade/metadata?mint=${encodeURIComponent(
-      mint
-    )}`
-  );
-}
-
-/* ============================================================
-   SOLANA TOKEN INFO
-   ============================================================ */
-
-async function getSolanaTokenInfo(mint) {
-  if (!mint) return null;
-
-  return await getJson(
-    `https://sol.shrine.trade/api/token-info?mint=${encodeURIComponent(
-      mint
-    )}`
-  );
-}
-
-/* ============================================================
-   OFF-CHAIN METADATA
-   ============================================================ */
-
-function normalizeUri(uri) {
-  if (!uri) return "";
-
-  let value = String(uri).trim();
+  const value = String(uri).trim();
 
   if (value.startsWith("ipfs://")) {
-    value = `https://ipfs.io/ipfs/${value.substring(7)}`;
+    return `https://ipfs.io/ipfs/${value.slice(7)}`;
   }
 
   return value;
 }
 
-async function getUriMetadata(uri) {
-  const normalized = normalizeUri(uri);
+async function getOffchainMetadata(uri) {
+  const normalized = normalizeIpfs(uri);
 
-  if (!normalized) return null;
+  if (!normalized) {
+    return null;
+  }
 
-  const data = await getJson(normalized, 6000);
+  try {
+    const data = await getJson(normalized, 7000);
 
-  if (!data) return null;
+    if (!data) {
+      return null;
+    }
+
+    return {
+      image:
+        clean(data.image) ||
+        clean(data.imageUrl) ||
+        clean(data.logo) ||
+        null,
+
+      description:
+        clean(data.description),
+
+      website:
+        clean(data.website) ||
+        clean(data.external_url),
+
+      twitter:
+        clean(data.twitter) ||
+        clean(data.x),
+
+      telegram:
+        clean(data.telegram)
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function getMetadata(mint) {
+  const url =
+    `https://sol.shrine.trade/metadata?mint=${encodeURIComponent(mint)}`;
+
+  return await getJson(url);
+}
+
+async function getTokenInfo(mint) {
+  const url =
+    `https://sol.shrine.trade/api/token-info?mint=${encodeURIComponent(mint)}`;
+
+  return await getJson(url);
+}
+
+function isPlaceholder(value) {
+  const normalized = clean(value).toLowerCase();
+
+  return [
+    "",
+    "unknown",
+    "unknown token",
+    "new token",
+    "n/a",
+    "na",
+    "undefined",
+    "null"
+  ].includes(normalized);
+}
+
+function validNameAndSymbol(name, symbol) {
+  return (
+    !isPlaceholder(name) &&
+    !isPlaceholder(symbol)
+  );
+}
+
+function calculateAgeMinutes(timestamp) {
+  const unixTimestamp = Number(timestamp);
+
+  if (!Number.isFinite(unixTimestamp) || unixTimestamp <= 0) {
+    return 0;
+  }
+
+  return Math.max(
+    0,
+    (Date.now() - unixTimestamp * 1000) / 60000
+  );
+}
+
+function createToken({
+  event,
+  metadata,
+  tokenInfo,
+  offchain
+}) {
+  const mint =
+    clean(event?.mint) ||
+    clean(event?.address) ||
+    clean(metadata?.mint) ||
+    clean(tokenInfo?.mint);
+
+  if (!mint) {
+    return null;
+  }
+
+  const name =
+    clean(event?.name) ||
+    clean(tokenInfo?.name) ||
+    clean(metadata?.name);
+
+  const symbol =
+    clean(event?.symbol) ||
+    clean(tokenInfo?.symbol) ||
+    clean(metadata?.symbol);
+
+  if (!validNameAndSymbol(name, symbol)) {
+    return null;
+  }
+
+  const timestamp =
+    Number(event?.timestamp) ||
+    Number(metadata?.timestamp) ||
+    Math.floor(Date.now() / 1000);
+
+  const price =
+    toNumber(tokenInfo?.priceUSD) ||
+    toNumber(tokenInfo?.price) ||
+    toNumber(event?.priceUSD) ||
+    toNumber(event?.price);
+
+  const marketCap =
+    toNumber(tokenInfo?.marketCapUSD) ||
+    toNumber(tokenInfo?.marketCap) ||
+    toNumber(event?.marketCapUSD) ||
+    toNumber(event?.marketCap);
+
+  const volume =
+    toNumber(event?.volume24h) ||
+    toNumber(tokenInfo?.volume24h);
+
+  const liquidity =
+    toNumber(event?.liquidity) ||
+    toNumber(tokenInfo?.liquidityUSD) ||
+    toNumber(tokenInfo?.liquidity);
+
+  const uri =
+    clean(event?.uri) ||
+    clean(tokenInfo?.uri) ||
+    clean(metadata?.uri);
 
   return {
+    id: `solana-${mint}`,
+
+    chain: "solana",
+
+    name,
+
+    symbol,
+
+    address: mint,
+
+    mint,
+
+    price,
+
+    change24h:
+      toNumber(event?.change24h) ||
+      toNumber(tokenInfo?.change24h),
+
+    volume24h: volume,
+
+    liquidity,
+
+    marketCap,
+
+    ageMinutes:
+      calculateAgeMinutes(timestamp),
+
+    timestamp,
+
     image:
-      clean(data.image) ||
-      clean(data.imageUrl) ||
+      offchain?.image ||
       null,
 
     description:
-      clean(data.description),
+      offchain?.description ||
+      "",
 
     website:
-      clean(data.website),
+      offchain?.website ||
+      "",
 
     twitter:
-      clean(data.twitter) ||
-      clean(data.extensions?.twitter),
+      offchain?.twitter ||
+      "",
 
     telegram:
-      clean(data.telegram) ||
-      clean(data.extensions?.telegram)
+      offchain?.telegram ||
+      "",
+
+    uri,
+
+    protocol:
+      clean(event?.protocol) ||
+      clean(tokenInfo?.protocol) ||
+      clean(metadata?.protocol),
+
+    pool:
+      clean(event?.pool) ||
+      clean(tokenInfo?.pool) ||
+      clean(metadata?.pool),
+
+    quote:
+      clean(event?.quote) ||
+      clean(tokenInfo?.quote) ||
+      clean(metadata?.quote),
+
+    creator:
+      clean(event?.creator),
+
+    decimals:
+      Number(
+        event?.decimals ??
+        tokenInfo?.decimals ??
+        metadata?.decimals ??
+        0
+      ),
+
+    supply:
+      toNumber(
+        event?.supply ??
+        tokenInfo?.supply ??
+        metadata?.total_supply
+      ),
+
+    graduated:
+      Boolean(
+        tokenInfo?.graduated ??
+        false
+      ),
+
+    source: "Shrine",
+
+    live: true
   };
 }
 
-/* ============================================================
-   SOLANA TOKEN BUILDER
-   ============================================================ */
-
-async function buildSolanaToken(event) {
-  if (!event) return null;
-
-  const mint = clean(
-    event.mint ||
-    event.address
-  );
+async function enrichToken(event) {
+  const mint =
+    clean(event?.mint) ||
+    clean(event?.address);
 
   if (!mint) {
-    console.warn(
-      "FLASHGUYS: Solana event has no mint:",
-      event
-    );
-
     return null;
   }
 
   console.log(
-    "FLASHGUYS: Solana token detected:",
-    mint,
-    event.protocol
+    "FLASHGUYS: enriching Solana token:",
+    mint
   );
 
   /*
-   * New tokens can arrive before their metadata has
-   * propagated to the Shrine metadata registry.
+   * IMPORTANT:
    *
-   * Therefore we retry the registry a few times.
+   * We request BOTH metadata and token-info.
+   *
+   * /metadata can return successfully while still
+   * lacking price and market-cap information.
+   *
+   * /api/token-info contains the trading information.
    */
 
-  let metadata = null;
-  let tokenInfo = null;
+  const [metadata, tokenInfo] =
+    await Promise.all([
+      getMetadata(mint),
+      getTokenInfo(mint)
+    ]);
 
-  for (let attempt = 0; attempt < 4; attempt++) {
-    metadata =
-      await getSolanaMetadata(mint);
+  let finalMetadata = metadata;
+  let finalTokenInfo = tokenInfo;
 
-    tokenInfo =
-      await getSolanaTokenInfo(mint);
+  /*
+   * New tokens can take a moment to become available
+   * through the REST endpoints.
+   */
 
-    if (
-      metadata ||
-      tokenInfo ||
-      event.name ||
-      event.symbol
-    ) {
-      break;
+  if (
+    !finalMetadata ||
+    !finalTokenInfo
+  ) {
+    await sleep(700);
+
+    if (!finalMetadata) {
+      finalMetadata =
+        await getMetadata(mint);
     }
 
-    await sleep(1000);
+    if (!finalTokenInfo) {
+      finalTokenInfo =
+        await getTokenInfo(mint);
+    }
   }
 
-  /*
-   * Token information can come from several places.
-   */
+  const uri =
+    clean(event?.uri) ||
+    clean(finalTokenInfo?.uri) ||
+    clean(finalMetadata?.uri);
 
-  const name = clean(
-    event.name ||
-    tokenInfo?.name ||
-    metadata?.name
-  );
+  let offchain = null;
 
-  const symbol = clean(
-    event.symbol ||
-    tokenInfo?.symbol ||
-    metadata?.symbol
-  );
+  if (uri) {
+    offchain =
+      await getOffchainMetadata(uri);
+  }
 
-  const uri = clean(
-    event.uri ||
-    tokenInfo?.uri ||
-    metadata?.uri
-  );
+  let token =
+    createToken({
+      event,
+      metadata: finalMetadata,
+      tokenInfo: finalTokenInfo,
+      offchain
+    });
 
   /*
-   * Never create fake token names.
+   * Sometimes metadata arrives shortly after
+   * the launch event. Give it another chance.
    */
 
-  if (!name || !symbol) {
-    console.warn(
-      "FLASHGUYS: Solana metadata still unavailable:",
+  if (!token) {
+    await sleep(1000);
+
+    const retryMetadata =
+      await getMetadata(mint);
+
+    const retryTokenInfo =
+      await getTokenInfo(mint);
+
+    const retryUri =
+      clean(event?.uri) ||
+      clean(retryTokenInfo?.uri) ||
+      clean(retryMetadata?.uri);
+
+    let retryOffchain = null;
+
+    if (retryUri) {
+      retryOffchain =
+        await getOffchainMetadata(retryUri);
+    }
+
+    token =
+      createToken({
+        event,
+        metadata: retryMetadata,
+        tokenInfo: retryTokenInfo,
+        offchain: retryOffchain
+      });
+  }
+
+  if (!token) {
+    console.log(
+      "FLASHGUYS: token metadata still unavailable:",
       mint
     );
 
     return null;
   }
 
-  /*
-   * Fetch image/social information from the token URI.
-   */
-
-  let uriData = null;
-
-  if (uri) {
-    uriData =
-      await getUriMetadata(uri);
-  }
-
-  /*
-   * Timestamp.
-   *
-   * Shrine timestamps are Unix seconds.
-   */
-
-  const timestamp = toNumber(
-    event.timestamp ||
-    tokenInfo?.timestamp ||
-    metadata?.timestamp ||
-    Math.floor(Date.now() / 1000)
-  );
-
-  const ageMinutes =
-    timestamp > 0
-      ? Math.max(
-          0,
-          (Date.now() -
-            timestamp * 1000) /
-            60000
-        )
-      : 0;
-
-  /*
-   * Price.
-   *
-   * Prefer token-info because that endpoint contains
-   * live token information.
-   */
-
-  const price = toNumber(
-    tokenInfo?.priceUSD ??
-    tokenInfo?.priceUsd ??
-    tokenInfo?.price ??
-    metadata?.priceUSD ??
-    metadata?.priceUsd ??
-    metadata?.price ??
-    event.priceUSD ??
-    event.priceUsd ??
-    event.price
-  );
-
-  /*
-   * Market cap.
-   */
-
-  const marketCap = toNumber(
-    tokenInfo?.marketCapUSD ??
-    tokenInfo?.marketCapUsd ??
-    tokenInfo?.marketCap ??
-    metadata?.marketCapUSD ??
-    metadata?.marketCapUsd ??
-    metadata?.marketCap ??
-    event.marketCapUSD ??
-    event.marketCapUsd ??
-    event.marketCap
-  );
-
-  /*
-   * Liquidity.
-   */
-
-  const liquidity = toNumber(
-    tokenInfo?.liquidityUSD ??
-    tokenInfo?.liquidityUsd ??
-    tokenInfo?.liquidity ??
-    metadata?.liquidityUSD ??
-    metadata?.liquidityUsd ??
-    metadata?.liquidity ??
-    event.liquidityUSD ??
-    event.liquidityUsd ??
-    event.liquidity
-  );
-
-  /*
-   * Volume.
-   */
-
-  const volume24h = toNumber(
-    tokenInfo?.volume24h ??
-    tokenInfo?.volume24hUSD ??
-    tokenInfo?.volumeUSD24h ??
-    metadata?.volume24h ??
-    metadata?.volume24hUSD ??
-    event.volume24h ??
-    event.volume24hUSD
-  );
-
-  /*
-   * 24h change.
-   */
-
-  const change24h = toNumber(
-    tokenInfo?.change24h ??
-    tokenInfo?.priceChange24h ??
-    metadata?.change24h ??
-    metadata?.priceChange24h ??
-    event.change24h ??
-    event.priceChange24h
-  );
-
-  const protocol = clean(
-    event.protocol ||
-    tokenInfo?.protocol ||
-    metadata?.protocol
-  );
-
-  const pool = clean(
-    event.pool ||
-    tokenInfo?.pool ||
-    metadata?.pool
-  );
-
-  const quote = clean(
-    event.quote ||
-    tokenInfo?.quote ||
-    metadata?.quote
-  );
-
-  const creator = clean(
-    event.creator ||
-    tokenInfo?.creator
-  );
-
-  const image =
-    uriData?.image ||
-    clean(tokenInfo?.image) ||
-    clean(metadata?.image) ||
-    null;
-
-  const token = {
-    id: `solana-${mint}`,
-
-    chain: "solana",
-
-    name,
-    symbol,
-
-    address: mint,
-    mint,
-
-    price,
-    change24h,
-    volume24h,
-    liquidity,
-    marketCap,
-
-    ageMinutes,
-
-    timestamp,
-
-    image,
-
-    description:
-      uriData?.description || "",
-
-    website:
-      uriData?.website || "",
-
-    twitter:
-      uriData?.twitter || "",
-
-    telegram:
-      uriData?.telegram || "",
-
-    uri,
-
-    protocol,
-    pool,
-    creator,
-    quote,
-
-    source: "Shrine",
-
-    live: true
-  };
-
   console.log(
-    "FLASHGUYS: Solana token ready:",
-    {
-      name: token.name,
-      symbol: token.symbol,
-      price: token.price,
-      liquidity: token.liquidity,
-      marketCap: token.marketCap,
-      volume24h: token.volume24h,
-      ageMinutes: token.ageMinutes,
-      image: token.image,
-      mint: token.mint
-    }
+    "FLASHGUYS: token ready:",
+    token.name,
+    `$${token.symbol}`,
+    token.address
   );
 
   return token;
 }
 
-/* ============================================================
-   SOLANA LIVE FEED
-   ============================================================ */
+function subscribeToToken(mint) {
+  if (!socket) {
+    return;
+  }
 
-function startSolanaFeed({
-  onToken,
+  if (!mint) {
+    return;
+  }
+
+  if (subscribedMints.has(mint)) {
+    return;
+  }
+
+  /*
+   * Shrine supports token subscriptions.
+   *
+   * Keep the number of subscriptions controlled.
+   */
+
+  if (subscribedMints.size >= 50) {
+    return;
+  }
+
+  subscribedMints.add(mint);
+
+  socket.emit(
+    "subscribe",
+    {
+      mint
+    }
+  );
+
+  console.log(
+    "FLASHGUYS: subscribed to live updates:",
+    mint
+  );
+}
+
+function queueToken(event) {
+  const mint =
+    clean(event?.mint) ||
+    clean(event?.address);
+
+  if (!mint) {
+    return;
+  }
+
+  if (queuedMints.has(mint)) {
+    return;
+  }
+
+  if (processedMints.has(mint)) {
+    return;
+  }
+
+  if (
+    enrichmentQueue.length >=
+    MAX_QUEUE_SIZE
+  ) {
+    enrichmentQueue.shift();
+  }
+
+  queuedMints.add(mint);
+
+  enrichmentQueue.push({
+    mint,
+    event
+  });
+
+  processQueue();
+}
+
+async function processQueue() {
+  if (processingQueue) {
+    return;
+  }
+
+  processingQueue = true;
+
+  while (
+    !stopped &&
+    enrichmentQueue.length > 0
+  ) {
+    const item =
+      enrichmentQueue.shift();
+
+    if (!item) {
+      continue;
+    }
+
+    const {
+      mint,
+      event
+    } = item;
+
+    queuedMints.delete(mint);
+
+    try {
+      const token =
+        await enrichToken(event);
+
+      processedMints.add(mint);
+
+      if (token) {
+        subscribeToToken(mint);
+
+        window.dispatchEvent(
+          new CustomEvent(
+            "flashguys:solana-token",
+            {
+              detail: token
+            }
+          )
+        );
+      }
+    } catch (error) {
+      console.error(
+        "FLASHGUYS token enrichment error:",
+        error
+      );
+    }
+
+    /*
+     * Shrine REST endpoints have rate limits.
+     * Slow the queue down so a busy launch period
+     * does not hammer the API.
+     */
+
+    await sleep(
+      ENRICH_DELAY_MS
+    );
+  }
+
+  processingQueue = false;
+}
+
+function updateTokenFromLiveEvent(update) {
+  if (!update) {
+    return;
+  }
+
+  const mint =
+    clean(update.mint) ||
+    clean(update.address) ||
+    clean(update.token);
+
+  if (!mint) {
+    return;
+  }
+
+  const price =
+    toNumber(
+      update.priceUSD
+    ) ||
+    toNumber(
+      update.price
+    );
+
+  const marketCap =
+    toNumber(
+      update.marketCapUSD
+    ) ||
+    toNumber(
+      update.marketCap
+    );
+
+  const volume =
+    toNumber(
+      update.volume24h
+    );
+
+  const liquidity =
+    toNumber(
+      update.liquidityUSD
+    ) ||
+    toNumber(
+      update.liquidity
+    );
+
+  window.dispatchEvent(
+    new CustomEvent(
+      "flashguys:solana-update",
+      {
+        detail: {
+          mint,
+
+          price,
+
+          marketCap,
+
+          volume24h:
+            volume,
+
+          liquidity,
+
+          change24h:
+            toNumber(
+              update.change24h
+            ),
+
+          timestamp:
+            Number(
+              update.timestamp
+            ) ||
+            Math.floor(
+              Date.now() / 1000
+            )
+        }
+      }
+    )
+  );
+}
+
+function startSolanaSocket({
   onStatus,
   onError
 }) {
+  stopped = false;
+
   console.log(
-    "FLASHGUYS: connecting to Solana live feed..."
+    "FLASHGUYS: connecting to Shrine Solana..."
   );
 
-  const socket = io(
+  socket = io(
     SOLANA_SOCKET_URL,
     {
-      transports: ["websocket"],
+      transports: [
+        "websocket"
+      ],
+
       reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
+
+      reconnectionAttempts:
+        Infinity,
+
+      reconnectionDelay:
+        1000,
+
+      reconnectionDelayMax:
+        5000,
+
       timeout: 10000
     }
   );
 
-  socket.on("connect", () => {
-    console.log(
-      "FLASHGUYS: Solana Socket connected:",
-      socket.id
-    );
+  socket.on(
+    "connect",
+    () => {
+      console.log(
+        "FLASHGUYS: SOLANA CONNECTED",
+        socket.id
+      );
 
-    onStatus?.({
-      chain: "Solana",
-      connected: true
-    });
+      onStatus?.({
+        chain: "Solana",
+        connected: true
+      });
 
-    socket.emit(
-      "subscribe_new_tokens",
-      {
-        protocols: SOLANA_PROTOCOLS
-      }
-    );
+      socket.emit(
+        "subscribe_new_tokens",
+        {
+          protocols:
+            SOLANA_PROTOCOLS
+        }
+      );
 
-    console.log(
-      "FLASHGUYS: Solana subscription sent:",
-      SOLANA_PROTOCOLS
-    );
-  });
+      console.log(
+        "FLASHGUYS: subscribed to:",
+        SOLANA_PROTOCOLS
+      );
+    }
+  );
 
   socket.on(
     "new_token",
-    async (event) => {
+    (event) => {
       console.log(
         "FLASHGUYS NEW SOLANA TOKEN:",
         event
       );
 
-      try {
-        const token =
-          await buildSolanaToken(event);
-
-        if (!token) {
-          return;
-        }
-
-        onToken?.(token);
-      } catch (error) {
-        console.error(
-          "FLASHGUYS Solana processing error:",
-          error
-        );
-
-        onError?.({
-          chain: "Solana",
-          error
-        });
-      }
+      queueToken(event);
     }
   );
 
   socket.on(
-    "connect_error",
-    (error) => {
-      console.error(
-        "FLASHGUYS Solana connection error:",
-        error
+    "token_update",
+    (update) => {
+      console.log(
+        "FLASHGUYS SOLANA UPDATE:",
+        update
       );
 
-      onStatus?.({
-        chain: "Solana",
-        connected: false
-      });
-
-      onError?.({
-        chain: "Solana",
-        error
-      });
+      updateTokenFromLiveEvent(
+        update
+      );
     }
   );
 
@@ -540,7 +779,7 @@ function startSolanaFeed({
     "disconnect",
     (reason) => {
       console.warn(
-        "FLASHGUYS Solana disconnected:",
+        "FLASHGUYS SOLANA DISCONNECTED:",
         reason
       );
 
@@ -551,287 +790,92 @@ function startSolanaFeed({
     }
   );
 
-  return () => {
-    console.log(
-      "FLASHGUYS: stopping Solana feed"
-    );
-
-    socket.disconnect();
-  };
-}
-
-/* ============================================================
-   ROBINHOOD
-   ============================================================ */
-
-function buildRobinhoodToken(event) {
-  if (!event) return null;
-
-  const address = clean(
-    event.token ||
-    event.address
-  );
-
-  const name = clean(event.name);
-  const symbol = clean(event.symbol);
-
-  if (!address || !name || !symbol) {
-    console.warn(
-      "FLASHGUYS: incomplete Robinhood event:",
-      event
-    );
-
-    return null;
-  }
-
-  const timestamp =
-    toNumber(
-      event.timestamp ||
-      Math.floor(Date.now() / 1000)
-    );
-
-  const ageMinutes =
-    timestamp > 0
-      ? Math.max(
-          0,
-          (Date.now() -
-            timestamp * 1000) /
-            60000
-        )
-      : 0;
-
-  return {
-    id: `robinhood-${address}`,
-
-    chain: "robinhood",
-
-    name,
-    symbol,
-
-    address,
-    token: address,
-
-    price: toNumber(event.price),
-
-    change24h:
-      toNumber(event.change24h),
-
-    volume24h:
-      toNumber(event.volume24h),
-
-    liquidity:
-      toNumber(event.liquidity),
-
-    marketCap:
-      toNumber(event.marketCap),
-
-    ageMinutes,
-
-    timestamp,
-
-    image:
-      event.image || null,
-
-    description:
-      clean(event.description),
-
-    website:
-      clean(event.socials?.website),
-
-    twitter:
-      clean(event.socials?.twitter),
-
-    telegram:
-      clean(event.socials?.telegram),
-
-    uri:
-      clean(event.uri),
-
-    protocol:
-      clean(event.protocol),
-
-    pairToken:
-      clean(event.pairToken),
-
-    creator:
-      clean(event.deployer),
-
-    txHash:
-      clean(event.txHash),
-
-    source: "Shrine",
-
-    live: true
-  };
-}
-
-/* ============================================================
-   ROBINHOOD LIVE WEBSOCKET
-   ============================================================ */
-
-function startRobinhoodFeed({
-  onToken,
-  onStatus,
-  onError
-}) {
-  let ws = null;
-  let stopped = false;
-  let reconnectTimer = null;
-
-  function connect() {
-    if (stopped) return;
-
-    console.log(
-      "FLASHGUYS: connecting to Robinhood Chain live feed..."
-    );
-
-    ws = new WebSocket(
-      ROBINHOOD_WS_URL
-    );
-
-    ws.onopen = () => {
-      console.log(
-        "FLASHGUYS: Robinhood Chain connected"
-      );
-
-      onStatus?.({
-        chain: "Robinhood",
-        connected: true
-      });
-    };
-
-    ws.onmessage = (message) => {
-      try {
-        const event =
-          JSON.parse(message.data);
-
-        console.log(
-          "FLASHGUYS ROBINHOOD EVENT:",
-          event
-        );
-
-        if (
-          event.type !== "new_launch"
-        ) {
-          return;
-        }
-
-        const token =
-          buildRobinhoodToken(event);
-
-        if (!token) return;
-
-        onToken?.(token);
-      } catch (error) {
-        console.error(
-          "FLASHGUYS Robinhood message error:",
-          error
-        );
-
-        onError?.(error);
-      }
-    };
-
-    ws.onerror = (error) => {
+  socket.on(
+    "connect_error",
+    (error) => {
       console.error(
-        "FLASHGUYS Robinhood WebSocket error:",
+        "FLASHGUYS SOLANA CONNECTION ERROR:",
         error
       );
 
       onStatus?.({
-        chain: "Robinhood",
+        chain: "Solana",
         connected: false
       });
 
       onError?.(error);
-    };
-
-    ws.onclose = () => {
-      console.warn(
-        "FLASHGUYS Robinhood WebSocket closed"
-      );
-
-      onStatus?.({
-        chain: "Robinhood",
-        connected: false
-      });
-
-      if (!stopped) {
-        reconnectTimer =
-          setTimeout(
-            connect,
-            3000
-          );
-      }
-    };
-  }
-
-  connect();
+    }
+  );
 
   return () => {
     stopped = true;
 
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
+    enrichmentQueue.length = 0;
+    queuedMints.clear();
+
+    if (socket) {
+      socket.disconnect();
+      socket = null;
     }
 
-    if (ws) {
-      ws.close();
-    }
+    subscribedMints.clear();
+    processedMints.clear();
   };
 }
 
-/* ============================================================
-   PUBLIC API
-   ============================================================ */
-
 export function startLiveFeeds({
   onToken,
+  onUpdate,
   onStatus,
   onError
 }) {
   console.log(
-    "=============================================="
+    "======================================"
   );
 
   console.log(
-    "FLASHGUYS LIVE DISCOVERY STARTING"
+    "FLASHGUYS SOLANA LIVE DISCOVERY"
   );
 
   console.log(
-    "Solana:",
-    SOLANA_SOCKET_URL
+    "======================================"
   );
 
-  console.log(
-    "Robinhood:",
-    ROBINHOOD_WS_URL
+  function handleToken(event) {
+    onToken?.(event.detail);
+  }
+
+  function handleUpdate(event) {
+    onUpdate?.(event.detail);
+  }
+
+  window.addEventListener(
+    "flashguys:solana-token",
+    handleToken
   );
 
-  console.log(
-    "=============================================="
+  window.addEventListener(
+    "flashguys:solana-update",
+    handleUpdate
   );
 
-  const stopSolana =
-    startSolanaFeed({
-      onToken,
-      onStatus,
-      onError
-    });
-
-  const stopRobinhood =
-    startRobinhoodFeed({
-      onToken,
+  const stop =
+    startSolanaSocket({
       onStatus,
       onError
     });
 
   return () => {
-    console.log(
-      "FLASHGUYS: stopping all live feeds"
+    window.removeEventListener(
+      "flashguys:solana-token",
+      handleToken
     );
 
-    stopSolana?.();
-    stopRobinhood?.();
+    window.removeEventListener(
+      "flashguys:solana-update",
+      handleUpdate
+    );
+
+    stop?.();
   };
 }

@@ -87,10 +87,18 @@ async function handleSolanaToken(data, onToken) {
   // Get complete metadata
   const metadata = await getSolanaMetadata(mint);
 
-  if (!metadata) return;
+ if (!metadata) {
+  console.warn(
+    "⚠️ FLASHGUYS: No metadata found for",
+    mint
+  );
+  return;
+}
 
-  console.log("📦 FLASHGUYS SOLANA METADATA:", metadata);
-
+console.log(
+  "📦 FLASHGUYS SOLANA METADATA:",
+  metadata
+);
   const enrichedToken = {
     ...initialToken,
 

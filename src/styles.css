@@ -485,7 +485,9 @@ select {
   margin-top: 10px;
   border: 1px solid #20232a;
   border-radius: 13px;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: 640px;
   background: #0b0d11;
 }
 
@@ -498,6 +500,9 @@ select {
 }
 
 .token-table.header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   background: #101217;
   color: #5f6570;
   font-size: 9px;

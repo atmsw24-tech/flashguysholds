@@ -14,19 +14,22 @@ const SOLANA_PROTOCOLS = [
   "STONKFUN"
 ];
 
-/* -----------------------------
-   SOLANA METADATA
------------------------------ */
+/* =====================================================
+   SOLANA TOKEN INFORMATION
+===================================================== */
 
-async function getSolanaMetadata(mint) {
+async function getSolanaTokenInfo(mint) {
   try {
-    const response = await fetch(
-      `https://sol.shrine.trade/api/token-info?mint=${encodeURIComponent(mint)}`
-    );
+    const url =
+      `https://sol.shrine.trade/api/token-info?mint=${encodeURIComponent(mint)}`;
+
+    console.log("🔎 FLASHGUYS: Getting token info:", mint);
+
+    const response = await fetch(url);
 
     if (!response.ok) {
       console.warn(
-        "FLASHGUYS token-info failed:",
+        "⚠️ FLASHGUYS: Token info HTTP error:",
         response.status
       );
       return null;
@@ -35,14 +38,14 @@ async function getSolanaMetadata(mint) {
     const data = await response.json();
 
     console.log(
-      "✅ FLASHGUYS TOKEN INFO:",
+      "✅ FLASHGUYS: Token info received:",
       data
     );
 
     return data;
   } catch (error) {
     console.error(
-      "FLASHGUYS token-info error:",
+      "❌ FLASHGUYS: Token info error:",
       error
     );
 
@@ -50,180 +53,233 @@ async function getSolanaMetadata(mint) {
   }
 }
 
-/* -----------------------------
-   SOLANA TOKEN
------------------------------ */
+/* =====================================================
+   URI METADATA / IMAGE
+===================================================== */
 
-async function handleSolanaToken(data, onToken) {
-  if (!data) return;
-
-  const mint = data.mint || data.address;
-
-  if (!mint) return;
-
-  console.log("🔥 FLASHGUYS NEW SOLANA COIN:", data);
-
-  // Send the coin to the website immediately
-  const initialToken = {
-    id: `solana-${mint}`,
-    chain: "solana",
-    network: "solana",
-
-    name: data.name || "Loading...",
-    symbol: data.symbol || "...",
-
-    address: mint,
-    mint,
-
-    protocol: data.protocol || "Solana",
-
-    price: null,
-    marketCap: null,
-    liquidity: null,
-    volume24h: null,
-    change24h: null,
-
-    image: null,
-
-    creator: data.creator || null,
-    uri: data.uri || null,
-
-    decimals: data.decimals ?? null,
-    supply: data.supply ?? null,
-    pool: data.pool || null,
-    quote: data.quote || null,
-
-    createdAt: data.timestamp || Date.now(),
-
-    live: true,
-    source: "Shrine"
-  };
-
-
-  // Get complete metadata
-  const metadata = await getSolanaMetadata(mint);
-
- if (!metadata) {
-  console.warn(
-    "⚠️ FLASHGUYS: No metadata found for",
-    mint
-  );
-  return;
-}
-
-console.log(
-  "📦 FLASHGUYS SOLANA METADATA:",
-  metadata
-);
-  const enrichedToken = {
-    ...initialToken,
-
-   name:
-  metadata.name ||
-  data.name ||
-  initialToken.name ||
-  "New Token",
-
-symbol:
-  metadata.symbol ||
-  data.symbol ||
-  initialToken.symbol ||
-  "UNKNOWN",
-
-    uri:
-      metadata.uri ||
-      initialToken.uri ||
-      null,
-
-    pool:
-      metadata.pool ||
-      initialToken.pool ||
-      null,
-
-    decimals:
-      metadata.decimals ??
-      initialToken.decimals,
-
-    supply:
-      metadata.total_supply ??
-      initialToken.supply,
-
-    program:
-      metadata.program ||
-      null
-  };
-
-  onToken?.(enrichedToken);
-
-  // Try to load image/social metadata from URI
-  if (enrichedToken.uri) {
-    loadTokenURI(enrichedToken, onToken);
-  }
-}
-
-/* -----------------------------
-   OFF-CHAIN TOKEN METADATA
------------------------------ */
-
-async function loadTokenURI(token, onToken) {
+async function getUriMetadata(uri) {
   try {
-    let uri = token.uri;
+    if (!uri) return null;
 
-    if (!uri) return;
+    let url = uri;
 
-    if (uri.startsWith("ipfs://")) {
-      uri =
+    if (url.startsWith("ipfs://")) {
+      url =
         "https://ipfs.io/ipfs/" +
-        uri.replace("ipfs://", "");
+        url.substring(7);
     }
 
-    const response = await fetch(uri);
+    const response = await fetch(url);
 
-    if (!response.ok) return;
+    if (!response.ok) return null;
 
-    const metadata = await response.json();
+    const data = await response.json();
 
-    let image = metadata.image || null;
+    let image = data.image || null;
 
     if (image?.startsWith("ipfs://")) {
       image =
         "https://ipfs.io/ipfs/" +
-        image.replace("ipfs://", "");
+        image.substring(7);
     }
 
-    onToken?.({
-      ...token,
-
+    return {
       image,
-
-      description:
-        metadata.description || "",
-
+      description: data.description || "",
       website:
-        metadata.website ||
-        metadata.external_url ||
+        data.website ||
+        data.external_url ||
         null,
-
-      twitter:
-        metadata.twitter ||
-        null,
-
-      telegram:
-        metadata.telegram ||
-        null
-    });
-
+      twitter: data.twitter || null,
+      telegram: data.telegram || null
+    };
   } catch (error) {
     console.warn(
-      "FLASHGUYS token URI error:",
+      "⚠️ FLASHGUYS: URI metadata error:",
       error
     );
+
+    return null;
   }
 }
 
-/* -----------------------------
+/* =====================================================
+   PROCESS SOLANA NEW TOKEN
+===================================================== */
+
+async function processSolanaToken(data, onToken) {
+  if (!data) return;
+
+  const mint =
+    data.mint ||
+    data.address;
+
+  if (!mint) {
+    console.warn(
+      "⚠️ FLASHGUYS: Solana event has no mint:",
+      data
+    );
+    return;
+  }
+
+  console.log(
+    "🚨 FLASHGUYS: NEW SOLANA COIN DETECTED:",
+    mint
+  );
+
+  /*
+   * IMPORTANT:
+   * We DO NOT send an Unknown Token to the UI here.
+   *
+   * First we get the real token information.
+   */
+
+  const info =
+    await getSolanaTokenInfo(mint);
+
+  if (!info) {
+    console.warn(
+      "⚠️ FLASHGUYS: Could not get information for:",
+      mint
+    );
+
+    return;
+  }
+
+  const name =
+    info.name ||
+    data.name ||
+    "Unnamed Token";
+
+  const symbol =
+    info.symbol ||
+    data.symbol ||
+    "UNKNOWN";
+
+  const uri =
+    info.uri ||
+    data.uri ||
+    null;
+
+  let extra = null;
+
+  if (uri) {
+    extra =
+      await getUriMetadata(uri);
+  }
+
+  const token = {
+    id: `solana-${mint}`,
+
+    chain: "solana",
+    network: "solana",
+
+    name,
+    symbol,
+
+    address: mint,
+    mint,
+
+    protocol:
+      info.protocol ||
+      data.protocol ||
+      "Solana",
+
+    pool:
+      info.pool ||
+      data.pool ||
+      null,
+
+    quote:
+      info.quote ||
+      data.quote ||
+      null,
+
+    decimals:
+      info.decimals ??
+      data.decimals ??
+      null,
+
+    supply:
+      info.total_supply ??
+      info.supply ??
+      data.supply ??
+      null,
+
+    uri,
+
+    image:
+      extra?.image ||
+      null,
+
+    description:
+      extra?.description ||
+      "",
+
+    website:
+      extra?.website ||
+      null,
+
+    twitter:
+      extra?.twitter ||
+      null,
+
+    telegram:
+      extra?.telegram ||
+      null,
+
+    price:
+      info.priceUSD ??
+      info.price ??
+      null,
+
+    marketCap:
+      info.marketCapUSD ??
+      info.marketCap ??
+      null,
+
+    liquidity:
+      info.liquidityUSD ??
+      info.liquidity ??
+      null,
+
+    volume24h:
+      info.volumeUSD24h ??
+      info.volume24h ??
+      null,
+
+    change24h:
+      info.change24h ??
+      null,
+
+    creator:
+      info.creator ||
+      data.creator ||
+      null,
+
+    createdAt:
+      data.timestamp ||
+      Date.now(),
+
+    live: true,
+
+    source: "Shrine Solana"
+  };
+
+  console.log(
+    "🟢 FLASHGUYS: COMPLETE SOLANA TOKEN:",
+    token
+  );
+
+  /*
+   * ONLY NOW send it to the website.
+   */
+  onToken?.(token);
+}
+
+/* =====================================================
    SOLANA LIVE FEED
------------------------------ */
+===================================================== */
 
 export function startSolanaLiveFeed({
   onToken,
@@ -235,35 +291,44 @@ export function startSolanaLiveFeed({
     "⚡ FLASHGUYS: Starting Solana live feed..."
   );
 
-  const socket = io(SOLANA_SOCKET_URL, {
-    transports: ["websocket"],
-    reconnection: true,
-    reconnectionAttempts: Infinity,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 10000
-  });
+  const socket = io(
+    SOLANA_SOCKET_URL,
+    {
+      transports: ["websocket"],
+
+      reconnection: true,
+
+      reconnectionAttempts: Infinity,
+
+      reconnectionDelay: 1000,
+
+      reconnectionDelayMax: 10000
+    }
+  );
 
   socket.on("connect", () => {
 
     console.log(
-      "🟢 FLASHGUYS: Solana connected:",
+      "🟢 FLASHGUYS: SOLANA CONNECTED:",
       socket.id
     );
 
     onStatus?.({
       chain: "Solana",
       connected: true,
-      message: "Solana live feed connected"
+      message:
+        "Solana live feed connected"
     });
 
     console.log(
-      "📡 FLASHGUYS: Subscribing to new Solana tokens..."
+      "📡 FLASHGUYS: Subscribing to new tokens..."
     );
 
     socket.emit(
       "subscribe_new_tokens",
       {
-        protocols: SOLANA_PROTOCOLS
+        protocols:
+          SOLANA_PROTOCOLS
       },
       (response) => {
 
@@ -276,107 +341,124 @@ export function startSolanaLiveFeed({
     );
   });
 
-  /* NEW COIN */
+  /* ---------------------------------------------
+     NEW TOKEN EVENT
+  --------------------------------------------- */
 
-  socket.on("new_token", (data) => {
+  socket.on(
+    "new_token",
+    (data) => {
 
-    console.log(
-      "🚨 FLASHGUYS NEW TOKEN EVENT:",
-      data
-    );
+      processSolanaToken(
+        data,
+        onToken
+      );
+    }
+  );
 
-    handleSolanaToken(
-      data,
-      onToken
-    );
-  });
+  /* ---------------------------------------------
+     TOKEN UPDATE
+  --------------------------------------------- */
 
-  /* TOKEN PRICE / MARKET UPDATE */
+  socket.on(
+    "token_update",
+    (data) => {
 
-  socket.on("token_update", (data) => {
+      if (!data) return;
 
-    if (!data) return;
+      const mint =
+        data.mint ||
+        data.address;
 
-    console.log(
-      "📈 FLASHGUYS TOKEN UPDATE:",
-      data
-    );
+      if (!mint) return;
 
-    const mint =
-      data.mint ||
-      data.address;
+      console.log(
+        "📈 FLASHGUYS: Token update:",
+        mint
+      );
 
-    if (!mint) return;
+      onToken?.({
 
-    onToken?.({
-      id: `solana-${mint}`,
-      chain: "solana",
-      network: "solana",
+        id:
+          `solana-${mint}`,
 
-      address: mint,
-      mint,
+        chain: "solana",
 
-      price:
-        data.priceUSD ??
-        data.price ??
-        null,
+        network: "solana",
 
-      marketCap:
-        data.mcapUSD ??
-        data.marketCap ??
-        null,
+        address: mint,
 
-      liquidity:
-        data.liquidityUSD ??
-        data.liquidity ??
-        null,
+        mint,
 
-      volume24h:
-        data.volumeUSD24h ??
-        data.volume24h ??
-        null,
+        price:
+          data.priceUSD ??
+          data.price ??
+          null,
 
-      change24h:
-        data.change24h ??
-        null,
+        marketCap:
+          data.mcapUSD ??
+          data.marketCap ??
+          null,
 
-      live: true,
+        liquidity:
+          data.liquidityUSD ??
+          data.liquidity ??
+          null,
 
-      source: "Shrine"
-    });
-  });
+        volume24h:
+          data.volumeUSD24h ??
+          data.volume24h ??
+          null,
 
-  socket.on("connect_error", (error) => {
+        change24h:
+          data.change24h ??
+          null,
 
-    console.error(
-      "❌ FLASHGUYS Solana connection error:",
-      error
-    );
+        live: true,
 
-    onError?.({
-      chain: "Solana",
-      error,
-      message:
-        "Unable to connect to Solana live feed"
-    });
-  });
+        source: "Shrine Solana"
+      });
+    }
+  );
 
-  socket.on("disconnect", (reason) => {
+  socket.on(
+    "connect_error",
+    (error) => {
 
-    console.warn(
-      "🟡 FLASHGUYS Solana disconnected:",
-      reason
-    );
+      console.error(
+        "❌ FLASHGUYS: Solana connection error:",
+        error
+      );
 
-    onStatus?.({
-      chain: "Solana",
-      connected: false,
-      message:
-        `Solana disconnected: ${reason}`
-    });
-  });
+      onError?.({
+        chain: "Solana",
+        error,
+        message:
+          "Solana live connection error"
+      });
+    }
+  );
+
+  socket.on(
+    "disconnect",
+    (reason) => {
+
+      console.warn(
+        "🟡 FLASHGUYS: Solana disconnected:",
+        reason
+      );
+
+      onStatus?.({
+        chain: "Solana",
+        connected: false,
+        message:
+          `Solana disconnected: ${reason}`
+      });
+    }
+  );
 
   return () => {
+
     console.log(
       "🛑 FLASHGUYS: Stopping Solana feed"
     );
@@ -385,13 +467,14 @@ export function startSolanaLiveFeed({
   };
 }
 
-/* -----------------------------
-   ROBINHOOD CHAIN
------------------------------ */
+/* =====================================================
+   ROBINHOOD CHAIN TOKEN
+===================================================== */
 
 function normalizeRobinhoodToken(data) {
 
   return {
+
     id:
       `robinhood-${
         data.token ||
@@ -400,6 +483,7 @@ function normalizeRobinhoodToken(data) {
       }`,
 
     chain: "robinhood",
+
     network: "robinhood",
 
     name:
@@ -487,9 +571,9 @@ function normalizeRobinhoodToken(data) {
   };
 }
 
-/* -----------------------------
-   ROBINHOOD LIVE FEED
------------------------------ */
+/* =====================================================
+   ROBINHOOD CHAIN LIVE FEED
+===================================================== */
 
 export function startRobinhoodLiveFeed({
   onToken,
@@ -502,19 +586,19 @@ export function startRobinhoodLiveFeed({
   );
 
   let websocket = null;
+
   let reconnectTimer = null;
+
   let stopped = false;
 
   function connect() {
 
     if (stopped) return;
 
-    console.log(
-      "🔌 FLASHGUYS: Connecting to Robinhood Chain..."
-    );
-
     websocket =
-      new WebSocket(ROBINHOOD_WS_URL);
+      new WebSocket(
+        ROBINHOOD_WS_URL
+      );
 
     websocket.onopen = () => {
 
@@ -523,85 +607,105 @@ export function startRobinhoodLiveFeed({
       );
 
       onStatus?.({
-        chain: "Robinhood Chain",
+        chain:
+          "Robinhood Chain",
+
         connected: true,
+
         message:
-          "Robinhood Chain live feed connected"
+          "Robinhood Chain connected"
       });
     };
 
-    websocket.onmessage = (event) => {
+    websocket.onmessage =
+      (event) => {
 
-      try {
+        try {
 
-        const data =
-          JSON.parse(event.data);
+          const data =
+            JSON.parse(
+              event.data
+            );
 
-        console.log(
-          "🚨 FLASHGUYS ROBINHOOD EVENT:",
-          data
-        );
+          console.log(
+            "🚨 FLASHGUYS: Robinhood event:",
+            data
+          );
 
-        if (
-          data.type === "new_launch" ||
-          data.type === "graduated" ||
-          data.type === "new_pool"
-        ) {
+          if (
+            data.type ===
+              "new_launch" ||
+            data.type ===
+              "graduated" ||
+            data.type ===
+              "new_pool"
+          ) {
 
-          const token =
-            normalizeRobinhoodToken(data);
+            const token =
+              normalizeRobinhoodToken(
+                data
+              );
 
-          onToken?.(token);
+            onToken?.(token);
+          }
+
+        } catch (error) {
+
+          console.error(
+            "❌ FLASHGUYS: Robinhood message error:",
+            error
+          );
+
+          onError?.({
+            chain:
+              "Robinhood Chain",
+
+            error,
+
+            message:
+              "Invalid Robinhood message"
+          });
         }
+      };
 
-      } catch (error) {
+    websocket.onerror =
+      (error) => {
 
         console.error(
-          "❌ FLASHGUYS Robinhood message error:",
+          "❌ FLASHGUYS: Robinhood WebSocket error:",
           error
         );
 
         onError?.({
-          chain: "Robinhood Chain",
+          chain:
+            "Robinhood Chain",
+
           error,
+
           message:
-            "Invalid Robinhood Chain message"
+            "Robinhood Chain error"
         });
-      }
-    };
-
-    websocket.onerror = (error) => {
-
-      console.error(
-        "❌ FLASHGUYS Robinhood WebSocket error:",
-        error
-      );
-
-      onError?.({
-        chain: "Robinhood Chain",
-        error,
-        message:
-          "Robinhood Chain feed error"
-      });
-    };
+      };
 
     websocket.onclose = () => {
 
       if (stopped) return;
 
       onStatus?.({
-        chain: "Robinhood Chain",
+        chain:
+          "Robinhood Chain",
+
         connected: false,
+
         message:
           "Robinhood Chain disconnected"
       });
 
-      console.log(
-        "🔄 FLASHGUYS: Reconnecting to Robinhood Chain..."
-      );
-
       reconnectTimer =
-        setTimeout(connect, 3000);
+        setTimeout(
+          connect,
+          3000
+        );
     };
   }
 
@@ -612,7 +716,9 @@ export function startRobinhoodLiveFeed({
     stopped = true;
 
     if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
+      clearTimeout(
+        reconnectTimer
+      );
     }
 
     if (websocket) {
@@ -621,9 +727,9 @@ export function startRobinhoodLiveFeed({
   };
 }
 
-/* -----------------------------
+/* =====================================================
    START BOTH CHAINS
------------------------------ */
+===================================================== */
 
 export function startLiveFeeds({
   onToken,
@@ -648,7 +754,7 @@ export function startLiveFeeds({
   return () => {
 
     stopSolana?.();
-    stopRobinhood?.();
 
+    stopRobinhood?.();
   };
 }

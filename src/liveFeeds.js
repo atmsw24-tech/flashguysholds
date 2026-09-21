@@ -52,8 +52,8 @@ async function handleSolanaToken(data, onToken) {
     chain: "solana",
     network: "solana",
 
-    name: data.name || "New Token",
-    symbol: data.symbol || "UNKNOWN",
+    name: data.name || "Loading...",
+    symbol: data.symbol || "...",
 
     address: mint,
     mint,

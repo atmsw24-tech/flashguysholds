@@ -60,7 +60,7 @@ export default async function handler(req, res) {
         headers: {
           "X-APIKEY": apiKey,
           "Content-Type": "application/json",
-          "User-Agent": "FLASHGUYS/1.0"
+          "Accept": "application/json"
         },
 
         body: JSON.stringify({
@@ -79,7 +79,7 @@ export default async function handler(req, res) {
         errors.push({
           chain,
           status: response.status,
-          error: "GMGN returned non-JSON response"
+          error: "GMGN returned invalid JSON"
         });
 
         continue;
@@ -98,14 +98,6 @@ export default async function handler(req, res) {
         continue;
       }
 
-      /*
-       * Official GMGN response:
-       *
-       * data.new_creation
-       * data.pump
-       * data.completed
-       */
-
       const tokens =
         data?.data?.new_creation || [];
 
@@ -113,7 +105,7 @@ export default async function handler(req, res) {
         errors.push({
           chain,
           status: response.status,
-          error: "GMGN new_creation was not an array"
+          error: "GMGN new_creation is not an array"
         });
 
         continue;
@@ -129,7 +121,9 @@ export default async function handler(req, res) {
 
         const createdTimestamp =
           Number(
-            token.created_timestamp || 0
+            token.created_timestamp ||
+            token.creation_timestamp ||
+            0
           );
 
         const ageMinutes =
@@ -144,6 +138,20 @@ export default async function handler(req, res) {
               )
             : null;
 
+        /*
+         * GMGN can provide the image directly
+         * in the trenches response.
+         */
+        let logo =
+          token.logo ||
+          token.logo_url ||
+          token.avatar ||
+          null;
+
+        /*
+         * Keep the raw token metadata available
+         * so the frontend can use it if needed.
+         */
         allTokens.push({
           id:
             `${chain}-${address}`,
@@ -161,10 +169,9 @@ export default async function handler(req, res) {
             token.symbol ||
             "UNKNOWN",
 
-          logo:
-            token.logo ||
-            token.logo_url ||
-            null,
+          logo,
+
+          image: logo,
 
           price:
             Number(
@@ -242,7 +249,11 @@ export default async function handler(req, res) {
       }
     }
 
-    const unique = new Map();
+    /*
+     * Remove duplicates.
+     */
+    const unique =
+      new Map();
 
     for (const token of allTokens) {
       const key =
@@ -256,6 +267,9 @@ export default async function handler(req, res) {
     const tokens =
       Array.from(unique.values());
 
+    /*
+     * Newest first.
+     */
     tokens.sort(
       (a, b) =>
         (b.createdAt || 0) -
@@ -283,6 +297,7 @@ export default async function handler(req, res) {
       error:
         error?.message ||
         "GMGN request failed",
+
       cause:
         error?.cause
           ? String(error.cause)

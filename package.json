@@ -10,14 +10,21 @@
     "worker": "node worker/index.js"
   },
   "dependencies": {
+    "@pump-fun/pump-sdk": "^2.0.0",
     "@solana/web3.js": "^1.98.4",
-    "dotenv": "^17.2.2",
+    "@solana/spl-token": "^0.4.14",
+    "@solana/wallet-adapter-base": "^0.9.27",
+    "@solana/wallet-adapter-react": "^0.15.39",
+    "@solana/wallet-adapter-react-ui": "^0.9.39",
+    "@solana/wallet-adapter-wallets": "^0.19.37",
+    "@coral-xyz/anchor": "^0.32.1",
+    "bn.js": "^5.2.2",
     "ethers": "^6.15.0",
-    "lucide-react": "^0.468.0",
     "pg": "^8.16.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "socket.io-client": "^4.8.1",
+    "lucide-react": "^0.468.0",
+    "dotenv": "^17.2.2",
     "ws": "^8.18.3"
   },
   "devDependencies": {

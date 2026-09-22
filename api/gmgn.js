@@ -1,7 +1,13 @@
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET, OPTIONS"
+  );
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type"
+  );
 
   if (req.method === "OPTIONS") {
     return res.status(204).end();
@@ -14,7 +20,8 @@ export default async function handler(req, res) {
     });
   }
 
-  const apiKey = process.env.GMGN_API_KEY;
+  const apiKey =
+    process.env.GMGN_API_KEY;
 
   if (!apiKey) {
     return res.status(500).json({
@@ -23,9 +30,10 @@ export default async function handler(req, res) {
     });
   }
 
-  const requestedChain = String(
-    req.query.chain || "sol"
-  ).toLowerCase();
+  const requestedChain =
+    String(
+      req.query.chain || "sol"
+    ).toLowerCase();
 
   const chains =
     requestedChain === "all"
@@ -41,7 +49,8 @@ export default async function handler(req, res) {
     if (!validChains.includes(chain)) {
       return res.status(400).json({
         success: false,
-        error: `Invalid chain: ${chain}`
+        error:
+          `Invalid chain: ${chain}`
       });
     }
   }
@@ -51,35 +60,61 @@ export default async function handler(req, res) {
     const errors = [];
 
     for (const chain of chains) {
+
+      /*
+       * GMGN Trenches
+       *
+       * new_creation =
+       * newly created tokens
+       *
+       * Robinhood Chain is officially
+       * supported by GMGN.
+       */
+
       const url =
-        `https://openapi.gmgn.ai/v1/trenches?chain=${encodeURIComponent(chain)}`;
+        `https://openapi.gmgn.ai/v1/trenches?chain=${encodeURIComponent(
+          chain
+        )}`;
 
-      const response = await fetch(url, {
-        method: "POST",
+      const response =
+        await fetch(url, {
+          method: "POST",
 
-        headers: {
-          "X-APIKEY": apiKey,
-          "Content-Type": "application/json",
-          "Accept": "application/json"
-        },
+          headers: {
+            "X-APIKEY": apiKey,
+            "Content-Type":
+              "application/json",
+            "Accept":
+              "application/json",
+            "User-Agent":
+              "FLASHGUYS/1.0"
+          },
 
-        body: JSON.stringify({
-          type: ["new_creation"],
-          limit: 80
-        })
-      });
+          body: JSON.stringify({
+            type: [
+              "new_creation"
+            ],
+            limit: 80
+          })
+        });
 
-      const text = await response.text();
+      const text =
+        await response.text();
 
       let data;
 
       try {
-        data = JSON.parse(text);
+        data =
+          JSON.parse(text);
       } catch {
         errors.push({
           chain,
-          status: response.status,
-          error: "GMGN returned invalid JSON"
+          status:
+            response.status,
+          error:
+            "GMGN returned non-JSON response",
+          response:
+            text.slice(0, 500)
         });
 
         continue;
@@ -88,7 +123,8 @@ export default async function handler(req, res) {
       if (!response.ok) {
         errors.push({
           chain,
-          status: response.status,
+          status:
+            response.status,
           error:
             data?.message ||
             data?.error ||
@@ -98,22 +134,45 @@ export default async function handler(req, res) {
         continue;
       }
 
-      const tokens =
-        data?.data?.new_creation || [];
+      /*
+       * GMGN returns:
+       *
+       * data.new_creation
+       */
 
-      if (!Array.isArray(tokens)) {
+      const newTokens =
+        data?.data?.new_creation;
+
+      if (
+        !Array.isArray(
+          newTokens
+        )
+      ) {
         errors.push({
           chain,
-          status: response.status,
-          error: "GMGN new_creation is not an array"
+          status:
+            response.status,
+          error:
+            "GMGN did not return a new_creation array",
+          responseKeys:
+            data?.data
+              ? Object.keys(
+                  data.data
+                )
+              : []
         });
 
         continue;
       }
 
-      for (const token of tokens) {
+      for (
+        const token
+        of newTokens
+      ) {
+
         const address =
-          token.address || "";
+          token.address ||
+          "";
 
         if (!address) {
           continue;
@@ -122,37 +181,34 @@ export default async function handler(req, res) {
         const createdTimestamp =
           Number(
             token.created_timestamp ||
-            token.creation_timestamp ||
             0
           );
 
-        const ageMinutes =
-          createdTimestamp > 0
-            ? Math.max(
-                0,
-                Math.floor(
-                  (Date.now() / 1000 -
-                    createdTimestamp) /
-                    60
-                )
-              )
-            : null;
+        let ageMinutes = null;
 
-        /*
-         * GMGN can provide the image directly
-         * in the trenches response.
-         */
-        let logo =
+        if (
+          createdTimestamp > 0
+        ) {
+          ageMinutes =
+            Math.max(
+              0,
+              Math.floor(
+                (
+                  Date.now() / 1000 -
+                  createdTimestamp
+                ) / 60
+              )
+            );
+        }
+
+        const logo =
           token.logo ||
           token.logo_url ||
-          token.avatar ||
+          token.image ||
           null;
 
-        /*
-         * Keep the raw token metadata available
-         * so the frontend can use it if needed.
-         */
         allTokens.push({
+
           id:
             `${chain}-${address}`,
 
@@ -171,7 +227,8 @@ export default async function handler(req, res) {
 
           logo,
 
-          image: logo,
+          image:
+            logo,
 
           price:
             Number(
@@ -180,57 +237,69 @@ export default async function handler(req, res) {
 
           marketCap:
             Number(
-              token.usd_market_cap || 0
+              token.usd_market_cap ||
+              token.market_cap ||
+              0
             ),
 
           liquidity:
             Number(
-              token.liquidity || 0
+              token.liquidity ||
+              0
             ),
 
           volume1h:
             Number(
-              token.volume_1h || 0
+              token.volume_1h ||
+              0
             ),
 
           volume24h:
             Number(
-              token.volume_24h || 0
+              token.volume_24h ||
+              0
             ),
 
           swaps1m:
             Number(
-              token.swaps_1m || 0
+              token.swaps_1m ||
+              0
             ),
 
           swaps1h:
             Number(
-              token.swaps_1h || 0
+              token.swaps_1h ||
+              0
             ),
 
           swaps24h:
             Number(
-              token.swaps_24h || 0
+              token.swaps_24h ||
+              0
             ),
 
           buys24h:
             Number(
-              token.buys_24h || 0
+              token.buys_24h ||
+              0
             ),
 
           sells24h:
             Number(
-              token.sells_24h || 0
+              token.sells_24h ||
+              0
             ),
 
           holders:
             Number(
-              token.holder_count || 0
+              token.holder_count ||
+              0
             ),
 
           netBuy24h:
             Number(
-              token.net_buy_24h || 0
+              token.net_buy_24h ||
+              0
             ),
 
           launchpad:
@@ -250,58 +319,93 @@ export default async function handler(req, res) {
     }
 
     /*
-     * Remove duplicates.
+     * Remove duplicate tokens.
      */
+
     const unique =
       new Map();
 
-    for (const token of allTokens) {
+    for (
+      const token
+      of allTokens
+    ) {
+
       const key =
         `${token.chain}:${token.address}`;
 
-      if (!unique.has(key)) {
-        unique.set(key, token);
+      if (
+        !unique.has(key)
+      ) {
+        unique.set(
+          key,
+          token
+        );
       }
     }
 
     const tokens =
-      Array.from(unique.values());
+      Array.from(
+        unique.values()
+      );
 
     /*
      * Newest first.
      */
+
     tokens.sort(
       (a, b) =>
-        (b.createdAt || 0) -
-        (a.createdAt || 0)
+        (
+          b.createdAt || 0
+        ) -
+        (
+          a.createdAt || 0
+        )
     );
 
     return res.status(200).json({
+
       success: true,
+
       source: "GMGN",
+
       live: true,
-      count: tokens.length,
+
+      chain:
+        requestedChain,
+
+      count:
+        tokens.length,
+
       errors,
+
       tokens
+
     });
 
   } catch (error) {
+
     console.error(
       "FLASHGUYS GMGN error:",
       error
     );
 
     return res.status(500).json({
+
       success: false,
+
       live: false,
+
       error:
         error?.message ||
         "GMGN request failed",
 
       cause:
         error?.cause
-          ? String(error.cause)
+          ? String(
+              error.cause
+            )
           : null
+
     });
   }
 }

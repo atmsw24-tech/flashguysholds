@@ -1,163 +1,95 @@
-/*
- * FLASHGUYS token discovery endpoint.
- *
- * Returns CURRENT market data for meme coins:
- *
- *  - Solana: pulled live from the DexScreener public API
- *    (trending/boosted tokens + verified blue-chip memecoins),
- *    normalized into the FLASHGUYS token model.
- *
- *  - Robinhood Chain: Shrine exposes this only over a live WebSocket
- *    (see src/liveFeeds.js). There is no public REST snapshot, so the
- *    client seeds Robinhood Chain tokens from that live feed. This
- *    endpoint returns whatever it can and lets the client merge the
- *    streamed launches on top.
- */
-
-const DEXSCREENER = "https://api.dexscreener.com";
-
-// Verified, high-liquidity Solana memecoin mints used as a stable base set
-// so the feed always has real current data even if the trending call is slow.
-const CURATED_SOLANA_MINTS = [
-  "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", // BONK
-  "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm", // WIF (dogwifhat)
-  "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr", // POPCAT
-  "ukHH6c7mMyiWCf1b9pnWe25TSpkDDt3H5pQZgZ7i3XvW", // BOME
-  "MEW1gQWJ3nEXg2qgERiKu7FAFj79PHvQVREQUzScPP5", // MEW
-  "5z3EqYQo9HiCEs3R84RCDMu2n7anpDMxRhdK8PSWmrRC" // MOODENG
+const demoTokens = [
+  {
+    id: "sol-flash",
+    chain: "sol",
+    name: "Solana Flash",
+    symbol: "FLASH",
+    price: 0.00042,
+    marketCap: 42000,
+    liquidity: 18500,
+    volume1h: 9200,
+    volume24h: 38500,
+    change24h: 125.4,
+    holders: 184,
+    createdAt: Date.now() - 18 * 60 * 1000,
+    logo: null,
+    description: "Demo Solana token for testing FLASHGUYS."
+  },
+  {
+    id: "sol-moon",
+    chain: "sol",
+    name: "Sol Moon",
+    symbol: "MOON",
+    price: 0.00124,
+    marketCap: 124000,
+    liquidity: 42000,
+    volume1h: 18600,
+    volume24h: 97000,
+    change24h: 67.8,
+    holders: 421,
+    createdAt: Date.now() - 42 * 60 * 1000,
+    logo: null,
+    description: "Demo Solana token for testing FLASHGUYS."
+  },
+  {
+    id: "rh-flash",
+    chain: "robinhood",
+    name: "Robinhood Flash Chain",
+    symbol: "FLC",
+    price: 0.0018,
+    marketCap: 180000,
+    liquidity: 63000,
+    volume1h: 27100,
+    volume24h: 142000,
+    change24h: 84.2,
+    holders: 562,
+    createdAt: Date.now() - 27 * 60 * 1000,
+    logo: null,
+    description: "Demo Robinhood Chain token for testing FLASHGUYS."
+  },
+  {
+    id: "rh-meme",
+    chain: "robinhood",
+    name: "Robin Meme",
+    symbol: "RMEME",
+    price: 0.00076,
+    marketCap: 76000,
+    liquidity: 29000,
+    volume1h: 11300,
+    volume24h: 58400,
+    change24h: 49.6,
+    holders: 297,
+    createdAt: Date.now() - 65 * 60 * 1000,
+    logo: null,
+    description: "Demo Robinhood Chain token for testing FLASHGUYS."
+  }
 ];
 
-async function safeJson(url, timeoutMs = 8000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+export default function handler(req, res) {
+  const chain =
+    typeof req.query?.chain === "string"
+      ? req.query.chain.toLowerCase()
+      : "all";
 
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: { accept: "application/json" }
+  if (!["all", "sol", "robinhood"].includes(chain)) {
+    return res.status(400).json({
+      success: false,
+      error: "Invalid chain. Use all, sol, or robinhood."
     });
-
-    if (!response.ok) return null;
-
-    return await response.json();
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function getTrendingSolanaMints() {
-  const boosts = await safeJson(`${DEXSCREENER}/token-boosts/top/v1`);
-
-  if (!Array.isArray(boosts)) return [];
-
-  return boosts
-    .filter((item) => item.chainId === "solana" && item.tokenAddress)
-    .map((item) => item.tokenAddress);
-}
-
-function pickBestPair(pairs) {
-  // A token can trade in many pools; keep the deepest one.
-  return pairs.reduce((best, pair) => {
-    const liquidity = Number(pair?.liquidity?.usd || 0);
-    const bestLiquidity = Number(best?.liquidity?.usd || 0);
-    return liquidity > bestLiquidity ? pair : best;
-  }, pairs[0]);
-}
-
-function normalizeDexPair(pair) {
-  const createdAt = Number(pair.pairCreatedAt || 0);
-  const ageMinutes = createdAt
-    ? Math.max(0, Math.floor((Date.now() - createdAt) / 60000))
-    : 0;
-
-  return {
-    id: `solana-${pair.baseToken.address}`,
-    chain: "solana",
-    name: pair.baseToken.name || "Unknown Token",
-    symbol: pair.baseToken.symbol || "UNKNOWN",
-    address: pair.baseToken.address || "",
-    price: Number(pair.priceUsd || 0),
-    change24h: Number(pair.priceChange?.h24 || 0),
-    volume24h: Number(pair.volume?.h24 || 0),
-    liquidity: Number(pair.liquidity?.usd || 0),
-    marketCap: Number(pair.marketCap || pair.fdv || 0),
-    ageMinutes,
-    image: pair.info?.imageUrl || null,
-    source: "DexScreener"
-  };
-}
-
-async function getSolanaTokens() {
-  const trending = await getTrendingSolanaMints();
-
-  // De-duplicate: curated blue chips first, then trending discoveries.
-  const mints = Array.from(
-    new Set([...CURATED_SOLANA_MINTS, ...trending])
-  ).slice(0, 30); // DexScreener tokens endpoint accepts up to 30 addresses.
-
-  if (mints.length === 0) return [];
-
-  const pairs = await safeJson(
-    `${DEXSCREENER}/tokens/v1/solana/${mints.join(",")}`
-  );
-
-  if (!Array.isArray(pairs)) return [];
-
-  // Group all pairs by base token, then keep the deepest pool per token.
-  const byToken = new Map();
-
-  for (const pair of pairs) {
-    const address = pair?.baseToken?.address;
-    if (!address) continue;
-
-    if (!byToken.has(address)) byToken.set(address, []);
-    byToken.get(address).push(pair);
   }
 
-  const tokens = [];
+  const tokens =
+    chain === "all"
+      ? demoTokens
+      : demoTokens.filter(
+          (token) => token.chain === chain
+        );
 
-  for (const tokenPairs of byToken.values()) {
-    const best = pickBestPair(tokenPairs);
-    if (!best) continue;
-
-    const token = normalizeDexPair(best);
-
-    // Keep only tokens with a real, tradable market.
-    if (token.price > 0 && token.liquidity > 0) {
-      tokens.push(token);
-    }
-  }
-
-  tokens.sort((a, b) => b.volume24h - a.volume24h);
-
-  return tokens;
-}
-
-export default async function handler(req, res) {
-  const chain = req.query.chain;
-
-  let tokens = [];
-
-  if (!chain || chain === "all" || chain === "solana") {
-    tokens = await getSolanaTokens();
-  }
-
-  const live = tokens.length > 0;
-
-  // Cache at the edge for a minute; meme markets move fast but not per-request.
-  res.setHeader(
-    "Cache-Control",
-    "s-maxage=60, stale-while-revalidate=120"
-  );
-
-  res.status(200).json({
+  return res.status(200).json({
     success: true,
-    source: live ? "DexScreener" : "empty",
-    live,
-    chain: chain || "all",
-    count: tokens.length,
+    source: "demo",
+    live: false,
+    chain,
     tokens
   });
 }

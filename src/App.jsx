@@ -1,1194 +1,505 @@
-import React, {
-  useEffect,
-  useMemo,
-  useState
-} from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { fetchGMGNTokens } from "./marketData";
+import "./styles.css";
 
-import {
-  fetchGMGNTokens
-} from "./marketData";
-
-import {
-  ConnectionProvider,
-  WalletProvider,
-  useWallet
-} from "@solana/wallet-adapter-react";
-
-import {
-  WalletModalProvider,
-  WalletMultiButton
-} from "@solana/wallet-adapter-react-ui";
-
-import {
-  PhantomWalletAdapter
-} from "@solana/wallet-adapter-wallets";
-
-import "@solana/wallet-adapter-react-ui/styles.css";
-
-
-const SOLANA_RPC =
-  import.meta.env.VITE_SOLANA_RPC_URL ||
-  "https://api.mainnet-beta.solana.com";
-
+const MAX_VISIBLE_TOKENS = 50;
 
 function formatNumber(value) {
-  const number =
-    Number(value || 0);
+  const number = Number(value || 0);
 
-  if (number >= 1000000000) {
-    return (
-      "$" +
-      (number / 1000000000).toFixed(2) +
-      "B"
-    );
+  if (number >= 1_000_000_000) {
+    return `$${(number / 1_000_000_000).toFixed(2)}B`;
   }
 
-  if (number >= 1000000) {
-    return (
-      "$" +
-      (number / 1000000).toFixed(2) +
-      "M"
-    );
+  if (number >= 1_000_000) {
+    return `$${(number / 1_000_000).toFixed(2)}M`;
   }
 
-  if (number >= 1000) {
-    return (
-      "$" +
-      (number / 1000).toFixed(1) +
-      "K"
-    );
+  if (number >= 1_000) {
+    return `$${(number / 1_000).toFixed(1)}K`;
   }
 
-  if (number > 0) {
-    return (
-      "$" +
-      number.toFixed(2)
-    );
-  }
-
-  return "$0";
+  return `$${number.toFixed(0)}`;
 }
 
-
 function formatPrice(value) {
-  const number =
-    Number(value || 0);
+  const number = Number(value || 0);
 
-  if (number === 0) {
-    return "$0";
-  }
+  if (number === 0) return "$0";
 
   if (number < 0.000001) {
-    return "$" + number.toExponential(2);
+    return `$${number.toExponential(2)}`;
   }
 
   if (number < 0.01) {
-    return "$" + number.toFixed(8);
+    return `$${number.toFixed(6)}`;
   }
 
   if (number < 1) {
-    return "$" + number.toFixed(5);
+    return `$${number.toFixed(4)}`;
   }
 
-  return "$" + number.toFixed(2);
+  return `$${number.toFixed(2)}`;
 }
 
+function formatAge(createdAt) {
+  const time = Number(createdAt || Date.now());
+  const minutes = Math.max(
+    0,
+    Math.floor((Date.now() - time) / 60000)
+  );
 
-function formatAge(minutes) {
-  if (
-    minutes === null ||
-    minutes === undefined
-  ) {
-    return "—";
+  if (minutes < 60) {
+    return `${minutes}m`;
   }
 
-  const value =
-    Number(minutes);
+  const hours = Math.floor(minutes / 60);
 
-  if (value < 1) {
-    return "Just now";
+  if (hours < 24) {
+    return `${hours}h`;
   }
 
-  if (value < 60) {
-    return `${value}m`;
-  }
-
-  if (value < 1440) {
-    return `${Math.floor(value / 60)}h`;
-  }
-
-  return `${Math.floor(value / 1440)}d`;
+  return `${Math.floor(hours / 24)}d`;
 }
 
+function TokenLogo({ token }) {
+  const [imageError, setImageError] = useState(false);
 
-function TokenLogo({
-  token,
-  size = 44
-}) {
-  const [
-    imageError,
-    setImageError
-  ] = useState(false);
-
-  const image =
-    token.logo ||
-    token.image ||
-    null;
+  if (token.logo && !imageError) {
+    return (
+      <div className="token-logo">
+        <img
+          src={token.logo}
+          alt={token.symbol || token.name || "Token"}
+          onError={() => setImageError(true)}
+        />
+      </div>
+    );
+  }
 
   const letter =
-    (
-      token.symbol ||
-      token.name ||
-      "?"
-    )
-      .slice(0, 1)
+    (token.symbol || token.name || "?")
+      .charAt(0)
       .toUpperCase();
 
-  return (
-    <div
-      className="token-logo"
-      style={{
-        width: size,
-        height: size
-      }}
-    >
-      {image && !imageError ? (
-        <img
-          src={image}
-          alt={
-            token.name ||
-            token.symbol ||
-            "Token"
-          }
-          loading="lazy"
-          onError={() =>
-            setImageError(true)
-          }
-        />
-      ) : (
-        <div className="token-logo-fallback">
-          {letter}
-        </div>
-      )}
-    </div>
-  );
+  return <div className="token-logo">{letter}</div>;
 }
 
+function TokenRow({ token, onClick }) {
+  const change = Number(token.change24h || 0);
 
-function TokenRow({
-  token,
-  onClick
-}) {
   return (
-    <div
+    <tr
       className="token-row"
-      onClick={onClick}
+      onClick={() => onClick(token)}
+      style={{ cursor: "pointer" }}
     >
-      <div className="token-cell token-main">
+      <td>
+        <div className="token-name">
+          <TokenLogo token={token} />
 
-        <TokenLogo token={token} />
+          <div>
+            <strong>
+              {token.name || "Unknown Token"}
+            </strong>
 
-        <div className="token-identity">
-
-          <div className="token-title">
-            {token.name ||
-              "Unknown Token"}
+            <div className="token-symbol">
+              ${token.symbol || "UNKNOWN"}
+            </div>
           </div>
-
-          <div className="token-subtitle">
-
-            <span>
-              {token.symbol ||
-                "UNKNOWN"}
-            </span>
-
-            {token.launchpad && (
-              <>
-                <span className="dot">
-                  •
-                </span>
-
-                <span>
-                  {token.launchpad}
-                </span>
-              </>
-            )}
-
-          </div>
-
         </div>
+      </td>
 
-      </div>
-
-
-      <div className="token-cell">
-
-        <span className="mobile-label">
-          Price
+      <td>
+        <span className="chain-badge">
+          {token.chain === "robinhood"
+            ? "Robinhood"
+            : "Solana"}
         </span>
+      </td>
 
-        <span>
-          {formatPrice(
-            token.price
-          )}
-        </span>
+      <td>{formatPrice(token.price)}</td>
 
-      </div>
+      <td>{formatNumber(token.marketCap)}</td>
 
+      <td>{formatNumber(token.liquidity)}</td>
 
-      <div className="token-cell">
+      <td>{formatNumber(token.volume1h)}</td>
 
-        <span className="mobile-label">
-          Market Cap
-        </span>
+      <td>{Number(token.holders || 0).toLocaleString()}</td>
 
-        <span>
-          {formatNumber(
-            token.marketCap
-          )}
-        </span>
+      <td
+        style={{
+          color: change >= 0 ? "#55d88a" : "#ff6f7d",
+          fontWeight: 700
+        }}
+      >
+        {change >= 0 ? "+" : ""}
+        {change.toFixed(1)}%
+      </td>
 
-      </div>
-
-
-      <div className="token-cell">
-
-        <span className="mobile-label">
-          Liquidity
-        </span>
-
-        <span>
-          {formatNumber(
-            token.liquidity
-          )}
-        </span>
-
-      </div>
-
-
-      <div className="token-cell">
-
-        <span className="mobile-label">
-          Volume
-        </span>
-
-        <span>
-          {formatNumber(
-            token.volume1h
-          )}
-        </span>
-
-      </div>
-
-
-      <div className="token-cell">
-
-        <span className="mobile-label">
-          Holders
-        </span>
-
-        <span>
-          {token.holders || 0}
-        </span>
-
-      </div>
-
-
-      <div className="token-cell token-age">
-
-        {formatAge(
-          token.ageMinutes
-        )}
-
-      </div>
-
-    </div>
+      <td>{formatAge(token.createdAt)}</td>
+    </tr>
   );
 }
 
+function PriceChart({ token }) {
+  const history =
+    token?.priceHistory ||
+    token?.chart ||
+    [];
 
-function TokenModal({
-  token,
-  onClose
-}) {
-  if (!token) {
-    return null;
+  if (!Array.isArray(history) || history.length < 2) {
+    return (
+      <div className="chart-empty">
+        Chart data unavailable for this token.
+      </div>
+    );
   }
+
+  const values = history
+    .map((item) => {
+      if (typeof item === "number") {
+        return item;
+      }
+
+      return Number(
+        item?.price ??
+        item?.value ??
+        0
+      );
+    })
+    .filter((value) => Number.isFinite(value));
+
+  if (values.length < 2) {
+    return (
+      <div className="chart-empty">
+        Chart data unavailable for this token.
+      </div>
+    );
+  }
+
+  const width = 700;
+  const height = 220;
+  const padding = 12;
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+
+  const points = values
+    .map((value, index) => {
+      const x =
+        padding +
+        (index / (values.length - 1)) *
+          (width - padding * 2);
+
+      const y =
+        height -
+        padding -
+        ((value - min) / range) *
+          (height - padding * 2);
+
+      return `${x},${y}`;
+    })
+    .join(" ");
+
+  return (
+    <svg
+      className="chart"
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+    >
+      <polyline
+        points={points}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
+  );
+}
+
+function TokenModal({ token, onClose }) {
+  if (!token) return null;
 
   return (
     <div
       className="modal-backdrop"
       onClick={onClose}
     >
-
       <div
-        className="token-modal"
+        className="modal"
         onClick={(event) =>
           event.stopPropagation()
         }
       >
-
-        <button
-          className="modal-close"
-          onClick={onClose}
-        >
-          ×
-        </button>
-
-
         <div className="modal-header">
+          <div className="modal-title">
+            <TokenLogo token={token} />
 
-          <TokenLogo
-            token={token}
-            size={72}
-          />
+            <div>
+              <h2>
+                {token.name || "Unknown Token"}
+              </h2>
 
-          <div>
-
-            <h2>
-              {token.name ||
-                "Unknown Token"}
-            </h2>
-
-            <p>
-              {token.symbol ||
-                "UNKNOWN"}
-            </p>
-
+              <div className="token-symbol">
+                ${token.symbol || "UNKNOWN"}
+              </div>
+            </div>
           </div>
 
+          <button
+            className="close-button"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            ×
+          </button>
         </div>
 
+        <div className="modal-body">
+          <div className="stats-grid">
+            <div className="stat">
+              <div className="stat-label">
+                Price
+              </div>
 
-        <div className="modal-grid">
+              <div className="stat-value">
+                {formatPrice(token.price)}
+              </div>
+            </div>
 
-          <div>
-            <span>Chain</span>
+            <div className="stat">
+              <div className="stat-label">
+                Market Cap
+              </div>
 
-            <strong>
-              {token.chain ===
-              "robinhood"
-                ? "Robinhood Chain"
-                : "Solana"}
-            </strong>
+              <div className="stat-value">
+                {formatNumber(token.marketCap)}
+              </div>
+            </div>
+
+            <div className="stat">
+              <div className="stat-label">
+                Liquidity
+              </div>
+
+              <div className="stat-value">
+                {formatNumber(token.liquidity)}
+              </div>
+            </div>
+
+            <div className="stat">
+              <div className="stat-label">
+                Holders
+              </div>
+
+              <div className="stat-value">
+                {Number(
+                  token.holders || 0
+                ).toLocaleString()}
+              </div>
+            </div>
           </div>
 
+          <div className="chart-container">
+            <div className="chart-title">
+              Price Chart
+            </div>
 
-          <div>
-            <span>Price</span>
-
-            <strong>
-              {formatPrice(
-                token.price
-              )}
-            </strong>
+            <PriceChart token={token} />
           </div>
-
-
-          <div>
-            <span>Market Cap</span>
-
-            <strong>
-              {formatNumber(
-                token.marketCap
-              )}
-            </strong>
-          </div>
-
-
-          <div>
-            <span>Liquidity</span>
-
-            <strong>
-              {formatNumber(
-                token.liquidity
-              )}
-            </strong>
-          </div>
-
-
-          <div>
-            <span>1h Volume</span>
-
-            <strong>
-              {formatNumber(
-                token.volume1h
-              )}
-            </strong>
-          </div>
-
-
-          <div>
-            <span>24h Volume</span>
-
-            <strong>
-              {formatNumber(
-                token.volume24h
-              )}
-            </strong>
-          </div>
-
-
-          <div>
-            <span>Holders</span>
-
-            <strong>
-              {token.holders || 0}
-            </strong>
-          </div>
-
-
-          <div>
-            <span>Age</span>
-
-            <strong>
-              {formatAge(
-                token.ageMinutes
-              )}
-            </strong>
-          </div>
-
         </div>
-
-
-        <div className="contract-section">
-
-          <span>
-            Contract
-          </span>
-
-          <code>
-            {token.address}
-          </code>
-
-        </div>
-
       </div>
-
     </div>
   );
 }
 
-
-/* =========================================================
-   LAUNCH PAGE
-========================================================= */
-
 function LaunchPage() {
-
-  const [
-    launchChain,
-    setLaunchChain
-  ] = useState("pumpfun");
-
-  const [
-    name,
-    setName
-  ] = useState("");
-
-  const [
-    symbol,
-    setSymbol
-  ] = useState("");
-
-  const [
-    description,
-    setDescription
-  ] = useState("");
-
-  const [
-    twitter,
-    setTwitter
-  ] = useState("");
-
-  const [
-    telegram,
-    setTelegram
-  ] = useState("");
-
-  const [
-    website,
-    setWebsite
-  ] = useState("");
-
-  const [
-    image,
-    setImage
-  ] = useState(null);
-
-  const [
-    imagePreview,
-    setImagePreview
-  ] = useState("");
-
-  const [
-    pair,
-    setPair
-  ] = useState("SOL");
-
-  const [
-    holderReward,
-    setHolderReward
-  ] = useState(false);
-
-
-  function handleImageChange(
-    event
-  ) {
-
-    const file =
-      event.target.files?.[0];
-
-    if (!file) {
-      return;
-    }
-
-    if (
-      file.size >
-      15 * 1024 * 1024
-    ) {
-
-      alert(
-        "Image must be 15 MB or smaller."
-      );
-
-      return;
-    }
-
-    setImage(file);
-
-    const url =
-      URL.createObjectURL(file);
-
-    setImagePreview(url);
-  }
-
-
-  function handleCreate() {
-
-    if (!name.trim()) {
-      alert(
-        "Enter a token name."
-      );
-      return;
-    }
-
-    if (!symbol.trim()) {
-      alert(
-        "Enter a token ticker."
-      );
-      return;
-    }
-
-    if (!image) {
-      alert(
-        "Upload a token image."
-      );
-      return;
-    }
-
-    alert(
-      launchChain === "pumpfun"
-        ? "Pump.fun creation is ready for wallet transaction integration."
-        : "Robinhood Chain ERC-20 deployment is ready for wallet transaction integration."
-    );
-  }
-
-
   return (
-    <section className="launch-page">
+    <div className="launch-page">
+      <h1>Launch a Token</h1>
 
-      <div className="launch-header">
+      <p>
+        Choose a launch ecosystem for your
+        project.
+      </p>
 
-        <div>
-
-          <h1>
-            Launch a Token
-          </h1>
+      <div className="launch-options">
+        <div className="launch-option">
+          <h3>Solana</h3>
 
           <p>
-            Create a token directly
-            from FLASHGUYS.
+            Launch through a supported Solana
+            token launch platform.
           </p>
 
+          <a
+            className="launch-button"
+            href="https://pump.fun/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open Pump.fun
+          </a>
         </div>
 
-      </div>
-
-
-      <div className="launch-chain-selector">
-
-        <button
-          className={
-            launchChain === "pumpfun"
-              ? "active"
-              : ""
-          }
-          onClick={() =>
-            setLaunchChain(
-              "pumpfun"
-            )
-          }
-        >
-          <strong>
-            Pump.fun
-          </strong>
-
-          <span>
-            Solana
-          </span>
-        </button>
-
-
-        <button
-          className={
-            launchChain ===
-            "robinhood"
-              ? "active"
-              : ""
-          }
-          onClick={() =>
-            setLaunchChain(
-              "robinhood"
-            )
-          }
-        >
-          <strong>
-            Robinhood Chain
-          </strong>
-
-          <span>
-            EVM
-          </span>
-        </button>
-
-      </div>
-
-
-      <div className="launch-card">
-
-        <div className="launch-form">
-
-          <div className="form-group">
-
-            <label>
-              Token Name
-            </label>
-
-            <input
-              type="text"
-              placeholder="Example: FlashGuy"
-              value={name}
-              maxLength={32}
-              onChange={(event) =>
-                setName(
-                  event.target.value
-                )
-              }
-            />
-
-          </div>
-
-
-          <div className="form-group">
-
-            <label>
-              Ticker
-            </label>
-
-            <input
-              type="text"
-              placeholder="FLASH"
-              value={symbol}
-              maxLength={13}
-              onChange={(event) =>
-                setSymbol(
-                  event.target.value
-                    .toUpperCase()
-                )
-              }
-            />
-
-          </div>
-
-
-          <div className="form-group">
-
-            <label>
-              Description
-            </label>
-
-            <textarea
-              placeholder="Describe your token..."
-              value={description}
-              onChange={(event) =>
-                setDescription(
-                  event.target.value
-                )
-              }
-              rows={5}
-            />
-
-          </div>
-
-
-          <div className="form-group">
-
-            <label>
-              Token Image
-            </label>
-
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/gif"
-              onChange={
-                handleImageChange
-              }
-            />
-
-            <small>
-              JPG, PNG or GIF. Maximum
-              15 MB.
-            </small>
-
-          </div>
-
-
-          <div className="form-row">
-
-            <div className="form-group">
-
-              <label>
-                X / Twitter
-              </label>
-
-              <input
-                type="url"
-                placeholder="https://x.com/..."
-                value={twitter}
-                onChange={(event) =>
-                  setTwitter(
-                    event.target.value
-                  )
-                }
-              />
-
-            </div>
-
-
-            <div className="form-group">
-
-              <label>
-                Telegram
-              </label>
-
-              <input
-                type="url"
-                placeholder="https://t.me/..."
-                value={telegram}
-                onChange={(event) =>
-                  setTelegram(
-                    event.target.value
-                  )
-                }
-              />
-
-            </div>
-
-          </div>
-
-
-          <div className="form-group">
-
-            <label>
-              Website
-            </label>
-
-            <input
-              type="url"
-              placeholder="https://..."
-              value={website}
-              onChange={(event) =>
-                setWebsite(
-                  event.target.value
-                )
-              }
-            />
-
-          </div>
-
-
-          {launchChain ===
-            "pumpfun" && (
-
-            <>
-
-              <div className="form-group">
-
-                <label>
-                  Trading Pair
-                </label>
-
-                <div className="pair-buttons">
-
-                  <button
-                    className={
-                      pair === "SOL"
-                        ? "active"
-                        : ""
-                    }
-                    onClick={() =>
-                      setPair("SOL")
-                    }
-                  >
-                    SOL
-                  </button>
-
-                  <button
-                    className={
-                      pair === "USDC"
-                        ? "active"
-                        : ""
-                    }
-                    onClick={() =>
-                      setPair("USDC")
-                    }
-                  >
-                    USDC
-                  </button>
-
-                </div>
-
-              </div>
-
-
-              <label className="checkbox-row">
-
-                <input
-                  type="checkbox"
-                  checked={
-                    holderReward
-                  }
-                  onChange={(event) =>
-                    setHolderReward(
-                      event.target.checked
-                    )
-                  }
-                />
-
-                <span>
-                  Enable Holder Rewards
-                </span>
-
-              </label>
-
-            </>
-
-          )}
-
-
-          {launchChain ===
-            "robinhood" && (
-
-            <div className="info-box">
-
-              <strong>
-                Robinhood Chain
-              </strong>
-
-              <p>
-                Your wallet will deploy
-                an ERC-20 token directly
-                on Robinhood Chain.
-              </p>
-
-              <p>
-                Network: Robinhood Chain
-                Mainnet
-              </p>
-
-              <p>
-                Chain ID: 4663
-              </p>
-
-              <p>
-                Gas token: ETH
-              </p>
-
-            </div>
-
-          )}
-
-
-          <div className="wallet-area">
-
-            <WalletMultiButton />
-
-          </div>
-
+        <div className="launch-option">
+          <h3>Robinhood Chain</h3>
+
+          <p>
+            Explore the Robinhood Chain ecosystem
+            and its token infrastructure.
+          </p>
 
           <button
-            className="create-token-button"
-            onClick={
-              handleCreate
+            className="launch-button"
+            onClick={() =>
+              alert(
+                "Robinhood Chain launch tools will be added here."
+              )
             }
           >
-            {launchChain ===
-            "pumpfun"
-              ? "CREATE ON PUMP.FUN"
-              : "CREATE ON ROBINHOOD CHAIN"}
+            Coming Soon
           </button>
-
         </div>
-
-
-        <div className="launch-preview">
-
-          <div className="preview-title">
-            TOKEN PREVIEW
-          </div>
-
-
-          <div className="preview-token">
-
-            <div className="preview-image">
-
-              {imagePreview ? (
-
-                <img
-                  src={imagePreview}
-                  alt="Token preview"
-                />
-
-              ) : (
-
-                <span>
-                  {symbol
-                    ? symbol
-                        .slice(0, 1)
-                        .toUpperCase()
-                    : "F"}
-                </span>
-
-              )}
-
-            </div>
-
-
-            <h2>
-              {name ||
-                "Your Token"}
-            </h2>
-
-
-            <div className="preview-symbol">
-              $
-              {symbol ||
-                "TOKEN"}
-            </div>
-
-
-            <p>
-              {description ||
-                "Your token description will appear here."}
-            </p>
-
-
-            <div className="preview-links">
-
-              {twitter && (
-                <span>
-                  X
-                </span>
-              )}
-
-              {telegram && (
-                <span>
-                  Telegram
-                </span>
-              )}
-
-              {website && (
-                <span>
-                  Website
-                </span>
-              )}
-
-            </div>
-
-          </div>
-
-
-          <div className="launch-warning">
-
-            <strong>
-              Wallet signing required
-            </strong>
-
-            <p>
-              FLASHGUYS will never ask
-              for your private key or
-              seed phrase.
-            </p>
-
-          </div>
-
-        </div>
-
       </div>
-
-    </section>
+    </div>
   );
 }
 
+export default function App() {
+  const [page, setPage] =
+    useState("discover");
 
-/* =========================================================
-   MAIN APP
-========================================================= */
+  const [chain, setChain] =
+    useState("all");
 
-function FlashGuysApp() {
+  const [tokens, setTokens] =
+    useState([]);
 
-  const [
-    page,
-    setPage
-  ] = useState("discover");
+  const [loading, setLoading] =
+    useState(true);
 
-  const [
-    chain,
-    setChain
-  ] = useState("sol");
+  const [error, setError] =
+    useState("");
 
-  const [
-    tokens,
-    setTokens
-  ] = useState([]);
+  const [search, setSearch] =
+    useState("");
 
-  const [
-    loading,
-    setLoading
-  ] = useState(true);
+  const [selectedToken, setSelectedToken] =
+    useState(null);
 
-  const [
-    error,
-    setError
-  ] = useState("");
-
-  const [
-    selectedToken,
-    setSelectedToken
-  ] = useState(null);
-
-  const [
-    lastUpdated,
-    setLastUpdated
-  ] = useState(null);
-
+  const [lastUpdated, setLastUpdated] =
+    useState(null);
 
   async function loadTokens() {
-
     try {
-
+      setLoading(true);
       setError("");
 
-      const result =
-        await fetchGMGNTokens(
-          chain
-        );
+      const data =
+        await fetchGMGNTokens(chain);
 
-      setTokens(result);
-
-      setLastUpdated(
-        new Date()
+      setTokens(
+        Array.isArray(data) ? data : []
       );
 
+      setLastUpdated(new Date());
     } catch (err) {
-
       console.error(err);
 
       setError(
         err?.message ||
-        "Unable to load tokens"
+        "Unable to load tokens."
       );
 
+      setTokens([]);
     } finally {
-
       setLoading(false);
-
     }
   }
 
-
   useEffect(() => {
-
-    if (
-      page !== "discover"
-    ) {
+    if (page !== "discover") {
       return;
     }
 
-    setLoading(true);
-
     loadTokens();
 
-    const interval =
-      setInterval(
-        loadTokens,
-        10000
+    const interval = setInterval(
+      loadTokens,
+      10000
+    );
+
+    return () => clearInterval(interval);
+  }, [chain, page]);
+
+  const filteredTokens = useMemo(() => {
+    const query =
+      search.trim().toLowerCase();
+
+    let result = [...tokens];
+
+    if (chain !== "all") {
+      result = result.filter(
+        (token) =>
+          token.chain === chain
       );
+    }
 
-    return () =>
-      clearInterval(interval);
+    if (query) {
+      result = result.filter((token) => {
+        const name =
+          token.name?.toLowerCase() || "";
 
-  }, [
-    chain,
-    page
-  ]);
+        const symbol =
+          token.symbol?.toLowerCase() || "";
 
+        return (
+          name.includes(query) ||
+          symbol.includes(query)
+        );
+      });
+    }
 
-  const sortedTokens =
-    useMemo(() => {
+    result.sort(
+      (a, b) =>
+        Number(b.createdAt || 0) -
+        Number(a.createdAt || 0)
+    );
 
-      return [...tokens].sort(
-        (a, b) =>
-          (b.createdAt || 0) -
-          (a.createdAt || 0)
-      );
-
-    }, [
-      tokens
-    ]);
-
+    return result.slice(
+      0,
+      MAX_VISIBLE_TOKENS
+    );
+  }, [tokens, chain, search]);
 
   return (
-
     <div className="app">
-
-      <header className="topbar">
-
-        <div className="brand">
-
-          <div className="brand-mark">
+      <header className="header">
+        <button
+          className="logo"
+          onClick={() =>
+            setPage("discover")
+          }
+          style={{
+            border: 0,
+            background: "transparent",
+            color: "inherit",
+            cursor: "pointer"
+          }}
+        >
+          <span className="logo-mark">
             F
-          </div>
+          </span>
 
-          <div>
+          FLASHGUYS
+        </button>
 
-            <div className="brand-name">
-              FLASHGUYS
-            </div>
-
-            <div className="brand-tagline">
-              Find the move before
-              the crowd.
-            </div>
-
-          </div>
-
-        </div>
-
-
-        <nav className="main-nav">
-
+        <nav className="nav">
           <button
             className={
               page === "discover"
@@ -1196,14 +507,11 @@ function FlashGuysApp() {
                 : ""
             }
             onClick={() =>
-              setPage(
-                "discover"
-              )
+              setPage("discover")
             }
           >
             Discover
           </button>
-
 
           <button
             className={
@@ -1212,308 +520,176 @@ function FlashGuysApp() {
                 : ""
             }
             onClick={() =>
-              setPage(
-                "launch"
-              )
+              setPage("launch")
             }
           >
             Launch
           </button>
-
         </nav>
-
-
-        <div className="live-status">
-
-          <span className="live-dot" />
-
-          LIVE
-
-        </div>
-
       </header>
 
-
-      <main className="container">
-
+      <main className="main">
         {page === "launch" ? (
-
           <LaunchPage />
-
         ) : (
-
           <>
-
             <section className="hero">
+              <h1>
+                Find the{" "}
+                <span>
+                  move
+                </span>{" "}
+                before the crowd.
+              </h1>
 
-              <div>
-
-                <h1>
-                  New Tokens
-                </h1>
-
-                <p>
-                  Discover newly created
-                  tokens across Solana
-                  and Robinhood Chain.
-                </p>
-
-              </div>
-
-
-              <button
-                className="refresh-button"
-                onClick={
-                  loadTokens
-                }
-              >
-                Refresh
-              </button>
-
+              <p>
+                Discover new tokens across
+                Solana and Robinhood Chain
+                in one place.
+              </p>
             </section>
 
+            <section className="controls">
+              <div className="chain-tabs">
+                <button
+                  className={
+                    chain === "all"
+                      ? "active"
+                      : ""
+                  }
+                  onClick={() =>
+                    setChain("all")
+                  }
+                >
+                  All
+                </button>
 
-            <div className="chain-tabs">
+                <button
+                  className={
+                    chain === "sol"
+                      ? "active"
+                      : ""
+                  }
+                  onClick={() =>
+                    setChain("sol")
+                  }
+                >
+                  Solana
+                </button>
 
-              <button
-                className={
-                  chain === "sol"
-                    ? "active"
-                    : ""
-                }
-                onClick={() =>
-                  setChain("sol")
-                }
-              >
-                Solana
-              </button>
+                <button
+                  className={
+                    chain === "robinhood"
+                      ? "active"
+                      : ""
+                  }
+                  onClick={() =>
+                    setChain("robinhood")
+                  }
+                >
+                  Robinhood
+                </button>
+              </div>
 
-
-              <button
-                className={
-                  chain ===
-                  "robinhood"
-                    ? "active"
-                    : ""
-                }
-                onClick={() =>
-                  setChain(
-                    "robinhood"
+              <input
+                className="search"
+                type="search"
+                placeholder="Search tokens..."
+                value={search}
+                onChange={(event) =>
+                  setSearch(
+                    event.target.value
                   )
                 }
-              >
-                Robinhood Chain
-              </button>
-
-
-              <button
-                className={
-                  chain === "all"
-                    ? "active"
-                    : ""
-                }
-                onClick={() =>
-                  setChain("all")
-                }
-              >
-                All
-              </button>
-
-            </div>
-
-
-            <section className="stats-bar">
-
-              <div>
-
-                <span>
-                  NEW TOKENS
-                </span>
-
-                <strong>
-                  {tokens.length}
-                </strong>
-
-              </div>
-
-
-              <div>
-
-                <span>
-                  SOURCE
-                </span>
-
-                <strong>
-                  GMGN
-                </strong>
-
-              </div>
-
-
-              <div>
-
-                <span>
-                  UPDATED
-                </span>
-
-                <strong>
-                  {lastUpdated
-                    ? lastUpdated.toLocaleTimeString()
-                    : "—"}
-                </strong>
-
-              </div>
-
+              />
             </section>
 
-
-            {error && (
-
-              <div className="error-box">
-                {error}
-              </div>
-
-            )}
-
-
-            <section className="token-table">
-
-              <div className="table-header">
-
-                <div>
-                  Token
+            <section className="token-card">
+              {loading ? (
+                <div className="status">
+                  Loading tokens...
                 </div>
-
-                <div>
-                  Price
+              ) : error ? (
+                <div className="status error">
+                  {error}
                 </div>
-
-                <div>
-                  Market Cap
-                </div>
-
-                <div>
-                  Liquidity
-                </div>
-
-                <div>
-                  Volume
-                </div>
-
-                <div>
-                  Holders
-                </div>
-
-                <div>
-                  Age
-                </div>
-
-              </div>
-
-
-              {loading &&
-              tokens.length ===
+              ) : filteredTokens.length ===
                 0 ? (
-
-                <div className="loading">
-                  Loading new tokens...
+                <div className="status">
+                  No tokens found.
                 </div>
-
-              ) : sortedTokens.length ===
-                0 ? (
-
-                <div className="empty">
-                  No new tokens found.
-                </div>
-
               ) : (
+                <table className="token-table">
+                  <thead>
+                    <tr>
+                      <th>Token</th>
+                      <th>Chain</th>
+                      <th>Price</th>
+                      <th>Market Cap</th>
+                      <th>Liquidity</th>
+                      <th>Volume 1h</th>
+                      <th>Holders</th>
+                      <th>24h</th>
+                      <th>Age</th>
+                    </tr>
+                  </thead>
 
-                sortedTokens.map(
-                  (token) => (
-
-                    <TokenRow
-                      key={
-                        token.id
-                      }
-                      token={
-                        token
-                      }
-                      onClick={() =>
-                        setSelectedToken(
-                          token
-                        )
-                      }
-                    />
-
-                  )
-                )
-
+                  <tbody>
+                    {filteredTokens.map(
+                      (token) => (
+                        <TokenRow
+                          key={
+                            token.id ||
+                            `${token.chain}-${token.symbol}`
+                          }
+                          token={token}
+                          onClick={
+                            setSelectedToken
+                          }
+                        />
+                      )
+                    )}
+                  </tbody>
+                </table>
               )}
-
             </section>
 
+            <div
+              style={{
+                marginTop: "14px",
+                display: "flex",
+                justifyContent:
+                  "space-between",
+                color: "#626c7b",
+                fontSize: "12px"
+              }}
+            >
+              <span>
+                Showing{" "}
+                {filteredTokens.length} tokens
+              </span>
+
+              <span>
+                {lastUpdated
+                  ? `Updated ${lastUpdated.toLocaleTimeString()}`
+                  : ""}
+              </span>
+            </div>
           </>
-
         )}
-
       </main>
 
+      <footer className="footer">
+        FLASHGUYS — Independent crypto
+        discovery platform.
+      </footer>
 
       <TokenModal
-        token={
-          selectedToken
-        }
+        token={selectedToken}
         onClose={() =>
-          setSelectedToken(
-            null
-          )
+          setSelectedToken(null)
         }
       />
-
     </div>
-
-  );
-}
-
-
-/* =========================================================
-   WALLET WRAPPER
-========================================================= */
-
-export default function App() {
-
-  const wallets = useMemo(
-    () => [
-      new PhantomWalletAdapter()
-    ],
-    []
-  );
-
-
-  return (
-
-    <ConnectionProvider
-      endpoint={
-        SOLANA_RPC
-      }
-    >
-
-      <WalletProvider
-        wallets={
-          wallets
-        }
-        autoConnect
-      >
-
-        <WalletModalProvider>
-
-          <FlashGuysApp />
-
-        </WalletModalProvider>
-
-      </WalletProvider>
-
-    </ConnectionProvider>
-
   );
 }

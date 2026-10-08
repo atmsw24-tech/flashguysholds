@@ -1,98 +1,122 @@
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL || "/api";
 
-async function requestTokens(chain) {
-  const controller =
-    new AbortController();
+function normalizeToken(token) {
+  const chain =
+    token.chain === "robinhood" || token.network === "robinhood"
+      ? "robinhood"
+      : "sol";
 
-  const timeout =
-    setTimeout(() => {
-      controller.abort();
-    }, 15000);
+  return {
+    ...token,
 
-  try {
-    const response =
-      await fetch(
-        `${API_BASE}/tokens?chain=${encodeURIComponent(chain)}`,
-        {
-          method: "GET",
-          headers: {
-            Accept: "application/json"
-          },
-          signal: controller.signal
-        }
-      );
+    chain,
 
-    if (!response.ok) {
-      throw new Error(
-        `Token API returned ${response.status}`
-      );
+    logo:
+      token.logo ||
+      token.image ||
+      token.logo_url ||
+      null,
+
+    image:
+      token.image ||
+      token.logo ||
+      token.logo_url ||
+      null,
+
+    createdAt:
+      token.createdAt ||
+      token.timestamp ||
+      Date.now(),
+
+    price: Number(
+      token.price ??
+      token.priceUSD ??
+      0
+    ),
+
+    marketCap: Number(
+      token.marketCap ??
+      token.mcapUSD ??
+      0
+    ),
+
+    liquidity: Number(
+      token.liquidity ??
+      token.liquidityUSD ??
+      0
+    ),
+
+    volume1h: Number(
+      token.volume1h ??
+      token.volume1hUSD ??
+      0
+    ),
+
+    volume24h: Number(
+      token.volume24h ??
+      token.volumeUSD24h ??
+      token.volume24h ??
+      0
+    ),
+
+    change24h: Number(
+      token.change24h ??
+      0
+    ),
+
+    holders: Number(
+      token.holders ??
+      0
+    ),
+  };
+}
+
+export async function fetchGMGNTokens(chain = "all") {
+  const response = await fetch(
+    `${API_BASE}/tokens?chain=${encodeURIComponent(chain)}`,
+    {
+      headers: {
+        Accept: "application/json",
+      },
     }
+  );
 
-    const data =
-      await response.json();
-
-    if (!data.success) {
-      throw new Error(
-        data.error ||
-        "Token API failed"
-      );
-    }
-
-    if (!Array.isArray(data.tokens)) {
-      return [];
-    }
-
-    return data.tokens.map(
-      (token) => ({
-        ...token,
-
-        /*
-         * Normalize all possible image fields.
-         */
-        logo:
-          token.logo ||
-          token.image ||
-          token.logo_url ||
-          null,
-
-        image:
-          token.image ||
-          token.logo ||
-          token.logo_url ||
-          null
-      })
+  if (!response.ok) {
+    throw new Error(
+      `Token API returned ${response.status}`
     );
-
-  } finally {
-    clearTimeout(timeout);
   }
-}
 
-export async function fetchGMGNTokens(
-  chain = "sol"
-) {
-  try {
-    return await requestTokens(chain);
+  const data = await response.json();
 
-  } catch (error) {
-    console.error(
-      "FLASHGUYS GMGN error:",
-      error
+  if (
+    !data.success ||
+    !Array.isArray(data.tokens)
+  ) {
+    throw new Error(
+      data.error ||
+      "Token API returned no token list"
     );
-
-    return [];
   }
+
+  const normalized =
+    data.tokens.map(normalizeToken);
+
+  if (chain === "all") {
+    return normalized;
+  }
+
+  return normalized.filter(
+    (token) => token.chain === chain
+  );
 }
 
-export async function fetchSolanaMemecoins() {
-  return fetchGMGNTokens("sol");
-}
+export const fetchSolanaMemecoins = () =>
+  fetchGMGNTokens("sol");
 
-export async function fetchRobinhoodTokens() {
-  return fetchGMGNTokens("robinhood");
-}
+export const fetchRobinhoodTokens = () =>
+  fetchGMGNTokens("robinhood");
 
-export async function fetchAllGMGNTokens() {
-  return fetchGMGNTokens("all");
-}
+export const fetchAllGMGNTokens = () =>
+  fetchGMGNTokens("all");

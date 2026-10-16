@@ -1,95 +1,81 @@
-const demoTokens = [
-  {
-    id: "sol-flash",
-    chain: "sol",
-    name: "Solana Flash",
-    symbol: "FLASH",
-    price: 0.00042,
-    marketCap: 42000,
-    liquidity: 18500,
-    volume1h: 9200,
-    volume24h: 38500,
-    change24h: 125.4,
-    holders: 184,
-    createdAt: Date.now() - 18 * 60 * 1000,
-    logo: null,
-    description: "Demo Solana token for testing FLASHGUYS."
-  },
-  {
-    id: "sol-moon",
-    chain: "sol",
-    name: "Sol Moon",
-    symbol: "MOON",
-    price: 0.00124,
-    marketCap: 124000,
-    liquidity: 42000,
-    volume1h: 18600,
-    volume24h: 97000,
-    change24h: 67.8,
-    holders: 421,
-    createdAt: Date.now() - 42 * 60 * 1000,
-    logo: null,
-    description: "Demo Solana token for testing FLASHGUYS."
-  },
-  {
-    id: "rh-flash",
-    chain: "robinhood",
-    name: "Robinhood Flash Chain",
-    symbol: "FLC",
-    price: 0.0018,
-    marketCap: 180000,
-    liquidity: 63000,
-    volume1h: 27100,
-    volume24h: 142000,
-    change24h: 84.2,
-    holders: 562,
-    createdAt: Date.now() - 27 * 60 * 1000,
-    logo: null,
-    description: "Demo Robinhood Chain token for testing FLASHGUYS."
-  },
-  {
-    id: "rh-meme",
-    chain: "robinhood",
-    name: "Robin Meme",
-    symbol: "RMEME",
-    price: 0.00076,
-    marketCap: 76000,
-    liquidity: 29000,
-    volume1h: 11300,
-    volume24h: 58400,
-    change24h: 49.6,
-    holders: 297,
-    createdAt: Date.now() - 65 * 60 * 1000,
-    logo: null,
-    description: "Demo Robinhood Chain token for testing FLASHGUYS."
+
+const DEX = "https://api.dexscreener.com";
+
+export default async function handler(req, res) {
+  res.setHeader("Cache-Control", "s-maxage=10, stale-while-revalidate=20");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+
+  if (req.method !== "GET") {
+    return res.status(405).json({ error: "Method not allowed" });
   }
-];
 
-export default function handler(req, res) {
-  const chain =
-    typeof req.query?.chain === "string"
-      ? req.query.chain.toLowerCase()
-      : "all";
+  try {
+    const response = await fetch(`${DEX}/token-profiles/latest/v1`);
 
-  if (!["all", "sol", "robinhood"].includes(chain)) {
-    return res.status(400).json({
-      success: false,
-      error: "Invalid chain. Use all, sol, or robinhood."
+    if (!response.ok) {
+      throw new Error(`DEX Screener returned ${response.status}`);
+    }
+
+    const profiles = await response.json();
+
+    const solana = (Array.isArray(profiles) ? profiles : [])
+      .filter((token) => token.chainId === "solana")
+      .slice(0, 30);
+
+    const results = await Promise.all(
+      solana.map(async (token) => {
+        try {
+          const r = await fetch(
+            `${DEX}/token-pairs/v1/solana/${encodeURIComponent(token.tokenAddress)}`
+          );
+
+          if (!r.ok) return null;
+
+          const pairs = await r.json();
+          if (!Array.isArray(pairs) || !pairs.length) return null;
+
+          const pair = pairs
+            .filter((p) => p.priceUsd && Number(p.priceUsd) > 0)
+            .sort(
+              (a, b) =>
+                Number(b.liquidity?.usd || 0) -
+                Number(a.liquidity?.usd || 0)
+            )[0];
+
+          if (!pair) return null;
+
+          return {
+            chain: "solana",
+            address: token.tokenAddress,
+            name: pair.baseToken?.name || "Unknown",
+            symbol: pair.baseToken?.symbol || "???",
+            price: Number(pair.priceUsd),
+            marketCap: Number(pair.marketCap || pair.fdv || 0),
+            liquidity: Number(pair.liquidity?.usd || 0),
+            volume24h: Number(pair.volume?.h24 || 0),
+            change24h: Number(pair.priceChange?.h24 || 0),
+            pairAddress: pair.pairAddress,
+            pairUrl: pair.url || token.url,
+            image: pair.info?.imageUrl || token.icon || null,
+            createdAt: pair.pairCreatedAt || null
+          };
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    return res.status(200).json({
+      tokens: results.filter(Boolean),
+      updatedAt: new Date().toISOString(),
+      source: "dexscreener",
+      note: "Recent token profiles with available Solana market pairs"
+    });
+  } catch (error) {
+    console.error("Token feed error:", error.message);
+    return res.status(502).json({
+      error: "Unable to fetch live token data",
+      tokens: []
     });
   }
-
-  const tokens =
-    chain === "all"
-      ? demoTokens
-      : demoTokens.filter(
-          (token) => token.chain === chain
-        );
-
-  return res.status(200).json({
-    success: true,
-    source: "demo",
-    live: false,
-    chain,
-    tokens
-  });
 }

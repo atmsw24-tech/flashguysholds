@@ -548,6 +548,38 @@ function queueToken(event) {
     return;
   }
 
+  // Show a newly detected launch immediately when the socket event already
+  // contains a usable name and symbol. Enrichment fills in market data later.
+  const eventName = clean(event?.name);
+  const eventSymbol = clean(event?.symbol);
+  if (validNameAndSymbol(eventName, eventSymbol)) {
+    const timestamp = Number(event?.timestamp) || Math.floor(Date.now() / 1000);
+    const price = toNumber(event?.priceUSD) || toNumber(event?.price);
+    window.dispatchEvent(new CustomEvent("flashguys:solana-token", {
+      detail: {
+        id: `solana-${mint}`,
+        chain: "solana",
+        name: eventName,
+        symbol: eventSymbol,
+        address: mint,
+        mint,
+        price,
+        marketCap: toNumber(event?.marketCapUSD) || toNumber(event?.marketCap),
+        liquidity: toNumber(event?.liquidityUSD) || toNumber(event?.liquidity),
+        volume24h: toNumber(event?.volume24h),
+        volume1h: toNumber(event?.volume1h),
+        change24h: toNumber(event?.change24h),
+        timestamp,
+        createdAt: timestamp * 1000,
+        image: clean(event?.image) || clean(event?.logo) || null,
+        protocol: clean(event?.protocol),
+        source: "Shrine",
+        live: true,
+        provisional: true
+      }
+    }));
+  }
+
   if (
     enrichmentQueue.length >=
     MAX_QUEUE_SIZE

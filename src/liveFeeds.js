@@ -23,6 +23,7 @@ const queuedMints = new Set();
 const processedMints = new Set();
 const subscribedMints = new Set();
 const requestedMints = new Set();
+const observedLaunchMints = new Set();
 
 let processingQueue = false;
 
@@ -522,6 +523,16 @@ function queueToken(event) {
 
   if (!mint) {
     return;
+  }
+
+  // Count each raw launch event once, even if metadata enrichment is not ready yet.
+  if (!observedLaunchMints.has(mint)) {
+    observedLaunchMints.add(mint);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("flashguys:new-launch", {
+        detail: { mint, timestamp: Number(event?.timestamp) || Math.floor(Date.now() / 1000), protocol: clean(event?.protocol) }
+      }));
+    }
   }
 
   if (queuedMints.has(mint)) {

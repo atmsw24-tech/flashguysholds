@@ -174,7 +174,7 @@ export default async function handler(req, res) {
       success: true,
       tokens,
       updatedAt: new Date().toISOString(),
-      source: "DexScreener" + (process.env.ROBINHOOD_TOKEN_API_URL ? " + configured Robinhood feed" : ""),
+      source: "DexScreener",
       note: null,
       warnings: errors
     });

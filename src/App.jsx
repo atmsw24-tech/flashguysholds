@@ -537,7 +537,7 @@ export default function App() {
         setSelectedToken((previous) => previous ? applyUpdate(previous) : previous);
       },
       onStatus: (status) => {
-        console.log("FLASHGUYS live feed status:", status);
+        console.log("FLASHBOYS live feed status:", status);
       },
       onError: (err) => {
         console.warn("FLASHGUYS live feed unavailable:", err?.message || err);

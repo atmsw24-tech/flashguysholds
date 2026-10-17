@@ -505,11 +505,18 @@ export default function App() {
         setTokens((previous) => {
           const mintKey = String(newToken.address || newToken.mint).toLowerCase();
           const exists = previous.some((item) => String(item.address || item.mint || "").toLowerCase() === mintKey);
-          if (exists) return previous.map((item) =>
-            String(item.address || item.mint || "").toLowerCase() === mintKey
-              ? { ...item, ...newToken, priceHistory: item.priceHistory?.length ? item.priceHistory : (Number(newToken.price) > 0 ? [{ time: Date.now(), price: Number(newToken.price) }] : []) }
-              : item
-          );
+          if (exists) return previous.map((item) => {
+            if (String(item.address || item.mint || "").toLowerCase() !== mintKey) return item;
+            const history = Array.isArray(item.priceHistory) ? [...item.priceHistory] : [];
+            const price = Number(newToken.price);
+            const timestamp = Number(newToken.timestamp) > 0
+              ? (Number(newToken.timestamp) < 1e12 ? Number(newToken.timestamp) * 1000 : Number(newToken.timestamp))
+              : Date.now();
+            if (price > 0 && (!history.length || Math.abs(Number(history[history.length - 1]?.price) - price) > 0 || timestamp - Number(history[history.length - 1]?.time || 0) >= 5000)) {
+              history.push({ time: timestamp, price });
+            }
+            return { ...item, ...newToken, priceHistory: history.slice(-24) };
+          });
           const seeded = { ...newToken, priceHistory: Number(newToken.price) > 0 ? [{ time: Date.now(), price: Number(newToken.price) }] : [] };
           return [seeded, ...previous].slice(0, MAX_VISIBLE_TOKENS * 3);
         });
@@ -625,10 +632,11 @@ export default function App() {
     let result = [...tokens];
 
     if (chain !== "all") {
-      result = result.filter(
-        (token) =>
-          token.chain === chain
-      );
+      result = result.filter((token) => {
+        const tokenChain = String(token.chain || "").toLowerCase();
+        if (chain === "sol") return tokenChain === "sol" || tokenChain === "solana";
+        return tokenChain === chain;
+      });
     }
 
     if (query) {

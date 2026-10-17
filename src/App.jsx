@@ -489,6 +489,8 @@ export default function App() {
   const [chain, setChain] =
     useState("all");
 
+  const [tokenView, setTokenView] = useState("new");
+
   const [tokens, setTokens] =
     useState([]);
 
@@ -678,17 +680,25 @@ export default function App() {
       });
     }
 
-    result.sort(
-      (a, b) =>
-        Number(b.createdAt || 0) -
-        Number(a.createdAt || 0)
-    );
+    if (tokenView === "top") {
+      // Rank daily leaders using reported 24h volume first, then daily change
+      // and liquidity as tie-breakers. No artificial scores are displayed.
+      result.sort((a, b) =>
+        (Number(b.volume24h || 0) - Number(a.volume24h || 0)) ||
+        (Number(b.change24h || 0) - Number(a.change24h || 0)) ||
+        (Number(b.liquidity || 0) - Number(a.liquidity || 0))
+      );
+    } else {
+      result.sort((a, b) =>
+        Number(b.createdAt || b.timestamp || 0) - Number(a.createdAt || a.timestamp || 0)
+      );
+    }
 
     return result.slice(
       0,
       MAX_VISIBLE_TOKENS
     );
-  }, [tokens, chain, search]);
+  }, [tokens, chain, search, tokenView]);
 
   return (
     <div className="app">
@@ -766,7 +776,11 @@ export default function App() {
             </section>
 
             <section className="controls">
-              <div className="chain-tabs">
+              <div className="chain-tabs" aria-label="Token view">
+                <button className={tokenView === "new" ? "active" : ""} onClick={() => setTokenView("new")}>New Tokens</button>
+                <button className={tokenView === "top" ? "active" : ""} onClick={() => setTokenView("top")}>Daily Top Tokens</button>
+              </div>
+              <div className="chain-tabs" aria-label="Blockchain filter">
                 <button
                   className={
                     chain === "all"
@@ -884,7 +898,7 @@ export default function App() {
               }}
             >
               <span>
-                Showing {filteredTokens.length} tokens · Live launches detected this session: {liveLaunchCount}
+                {tokenView === "top" ? "Daily Top Tokens" : "Newest Tokens"} · Showing {filteredTokens.length} tokens · Live launches detected this session: {liveLaunchCount}
               </span>
 
               <span>

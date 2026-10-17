@@ -588,3 +588,14 @@ a {
 .account-open-button:hover{background:rgba(201,255,57,.16)}
 .account-open-icon{font-size:16px}
 @media(max-width:720px){.header{height:auto;min-height:70px;gap:10px;padding:12px;flex-wrap:wrap}.account-open-button{font-size:11px;padding:9px}.nav{gap:2px}.nav button{padding:8px}}
+
+
+/* Per-token recent price charts; plotted only from observed market prices. */
+.sparkline-cell { min-width: 112px; }
+.token-sparkline { display: block; width: 96px; height: 30px; margin-left: auto; }
+.sparkline-empty { display: inline-block; color: #687282; font-size: 10px; white-space: nowrap; }
+.launch-button-disabled, .launch-button-disabled:hover { opacity: .55; cursor: not-allowed; background: #303642; }
+@media (max-width: 900px) {
+  .token-table th:nth-child(6), .token-table td:nth-child(6),
+  .token-table th:nth-child(7), .token-table td:nth-child(7) { display: none; }
+}

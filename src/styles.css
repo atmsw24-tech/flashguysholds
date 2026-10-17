@@ -583,3 +583,8 @@ a {
     max-height: calc(100vh - 20px);
   }
 }
+
+.account-open-button{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(201,255,57,.38);background:rgba(201,255,57,.09);color:#d9ff78;border-radius:10px;padding:10px 13px;font-size:12px;font-weight:800;white-space:nowrap}
+.account-open-button:hover{background:rgba(201,255,57,.16)}
+.account-open-icon{font-size:16px}
+@media(max-width:720px){.header{height:auto;min-height:70px;gap:10px;padding:12px;flex-wrap:wrap}.account-open-button{font-size:11px;padding:9px}.nav{gap:2px}.nav button{padding:8px}}

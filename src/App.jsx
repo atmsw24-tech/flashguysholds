@@ -238,19 +238,19 @@ function PriceChart({ token }) {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Market data unavailable");
         if (cancelled) return;
-        if (Number(data.price) > 0) setLivePrice(Number(data.price));
+        const currentPrice = Number(data.price);
+        if (currentPrice > 0) setLivePrice(currentPrice);
         const points = Array.isArray(data.history) ? data.history
           .map((point) => ({ time: Number(point.time), price: Number(point.price) }))
           .filter((point) => point.time > 0 && point.price > 0) : [];
-        if (points.length) {
-          setHistory((previous) => {
-            const merged = new Map();
-            [...points, ...previous].forEach((point) => merged.set(point.time, point));
-            return [...merged.values()].sort((a, b) => a.time - b.time).slice(-180);
-          });
-        } else if (Number(data.price) > 0) {
-          appendPoint(Number(data.price));
-        }
+        setHistory((previous) => {
+          const merged = new Map();
+          [...points, ...previous].forEach((point) => merged.set(point.time, point));
+          // Add a timestamped sample of the latest provider price so the chart can move
+          // even when the websocket has no trade update for this token.
+          if (currentPrice > 0) merged.set(Date.now(), { time: Date.now(), price: currentPrice });
+          return [...merged.values()].sort((a, b) => a.time - b.time).slice(-180);
+        });
         setUpdatedAt(new Date());
         if (data.historyWarning) setChartError(data.historyWarning);
       } catch (error) {
@@ -567,7 +567,23 @@ export default function App() {
           const key = String(token.address || token.mint || token.id || "").toLowerCase();
           if (!key) return;
           const current = merged.get(key);
-          merged.set(key, current ? { ...token, ...current } : token);
+          if (current) {
+            const previousHistory = Array.isArray(token.priceHistory) ? token.priceHistory : [];
+            const apiHistory = Array.isArray(current.priceHistory) ? current.priceHistory : [];
+            const nextHistory = [...previousHistory];
+            const observedPrice = Number(current.price);
+            const now = Date.now();
+            if (observedPrice > 0 && (!nextHistory.length || now - Number(nextHistory[nextHistory.length - 1]?.time || 0) >= 5000)) {
+              nextHistory.push({ time: now, price: observedPrice });
+            }
+            merged.set(key, {
+              ...token,
+              ...current,
+              priceHistory: [...nextHistory, ...apiHistory].sort((x, y) => Number(x.time || 0) - Number(y.time || 0)).slice(-24)
+            });
+          } else {
+            merged.set(key, token);
+          }
         });
         return [...merged.values()].sort((a, b) => Number(b.createdAt || b.timestamp || 0) - Number(a.createdAt || a.timestamp || 0)).slice(0, MAX_VISIBLE_TOKENS * 3);
       });

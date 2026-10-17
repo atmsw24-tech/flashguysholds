@@ -152,17 +152,21 @@ function PriceChart({ token }) {
 
   useEffect(() => {
     let cancelled = false;
+    let inFlight = false;
 
-    async function loadChart() {
-      if (!token?.address || token.chain === "robinhood") {
-        setHistory([]);
-        setChartError(token?.chain === "robinhood"
-          ? "Live charting for Robinhood Chain is not configured yet."
-          : "Token address is missing.");
-        return;
-      }
+    if (!token?.address || token.chain === "robinhood") {
+      setHistory([]);
+      setChartError(token?.chain === "robinhood"
+        ? "Live charting for Robinhood Chain is not configured yet."
+        : "Token address is missing.");
+      return undefined;
+    }
 
+    async function loadLivePrice() {
+      if (inFlight) return;
+      inFlight = true;
       setChartLoading(true);
+
       try {
         const response = await fetch(
           `/api/chart?address=${encodeURIComponent(token.address)}&chain=sol&_=${Date.now()}`,
@@ -171,45 +175,57 @@ function PriceChart({ token }) {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Live price unavailable");
 
-        if (!cancelled) {
-          const price = Number(data.price || 0);
-          if (price > 0) {
-            setLivePrice(price);
-            setHistory((previous) => {
-              const base = Array.isArray(data.history) ? data.history : [];
-              const combined = [...base, ...previous.filter((point) =>
-                !base.some((item) => Number(item.time) === Number(point.time))
-              )];
-              const now = Date.now();
-              const next = [...combined, { time: now, price }];
-              const unique = new Map();
-              next.forEach((point) => {
-                const p = Number(point.price);
-                const t = Number(point.time || now);
-                if (Number.isFinite(p) && p > 0) unique.set(t, { time: t, price: p });
-              });
-              return [...unique.values()].sort((a, b) => a.time - b.time).slice(-80);
+        const price = Number(data.price || 0);
+        if (!cancelled && price > 0) {
+          setLivePrice(price);
+          setHistory((previous) => {
+            const incoming = Array.isArray(data.history) ? data.history : [];
+            const merged = new Map();
+            [...incoming, ...previous].forEach((point) => {
+              const time = Number(point.time);
+              const value = Number(point.price ?? point.value);
+              if (Number.isFinite(time) && Number.isFinite(value) && value > 0) {
+                merged.set(time, { time, price: value });
+              }
             });
-          } else if (Array.isArray(data.history) && data.history.length) {
-            setHistory(data.history);
-          }
+            const now = Date.now();
+            merged.set(now, { time: now, price });
+            return [...merged.values()].sort((a, b) => a.time - b.time).slice(-120);
+          });
           setUpdatedAt(new Date());
           setChartError(data.historyWarning || "");
         }
       } catch (error) {
         if (!cancelled) setChartError(error?.message || "Could not load live price.");
       } finally {
+        inFlight = false;
         if (!cancelled) setChartLoading(false);
       }
     }
 
-    loadChart();
-    const interval = setInterval(loadChart, 15000);
+    loadLivePrice();
+    // Provider requests are limited; fetch actual market price every 5 seconds.
+    const priceInterval = setInterval(loadLivePrice, 5000);
+
+    // Advance the time axis every second using the latest real provider price.
+    // No synthetic price movement is invented between provider updates.
+    const tickInterval = setInterval(() => {
+      if (cancelled) return;
+      setHistory((previous) => {
+        const price = Number(livePrice);
+        if (!(price > 0)) return previous;
+        const now = Date.now();
+        const next = [...previous, { time: now, price }].slice(-120);
+        return next;
+      });
+    }, 1000);
+
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      clearInterval(priceInterval);
+      clearInterval(tickInterval);
     };
-  }, [token?.address, token?.chain]);
+  }, [token?.address, token?.chain, livePrice]);
 
   const values = history
     .map((item) => ({ time: Number(item?.time || Date.now()), price: Number(item?.price ?? item?.value ?? item) }))
@@ -218,7 +234,7 @@ function PriceChart({ token }) {
   if (values.length < 2) {
     return (
       <div className="chart-empty">
-        {chartLoading ? "Connecting to live market data..." : (chartError || "Waiting for enough live price points to draw chart.")}
+        {chartLoading ? "Connecting to live market data..." : (chartError || "Waiting for live price data.")}
       </div>
     );
   }
@@ -239,11 +255,16 @@ function PriceChart({ token }) {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", marginBottom: "10px", fontSize: "12px" }}>
         <strong>Live price: {formatPrice(livePrice)}</strong>
-        <span style={{ color: "#7b8493" }}>{updatedAt ? `Updated ${updatedAt.toLocaleTimeString()}` : "Connecting..."}</span>
+        <span style={{ color: "#7b8493" }}>
+          {updatedAt ? `Market updated ${updatedAt.toLocaleTimeString()}` : "Connecting..."}
+        </span>
       </div>
-      <svg className="chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Live token price chart">
+      <svg className="chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Live token price chart updated every second">
         <polyline points={points} fill="none" stroke="currentColor" strokeWidth="3" vectorEffect="non-scaling-stroke" />
       </svg>
+      <div style={{ fontSize: "11px", color: "#7b8493", marginTop: "6px" }}>
+        Chart redraws every second; market price refreshes about every 5 seconds.
+      </div>
       {chartError ? <div className="chart-empty">{chartError}</div> : null}
     </div>
   );

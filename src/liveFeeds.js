@@ -22,6 +22,7 @@ const enrichmentQueue = [];
 const queuedMints = new Set();
 const processedMints = new Set();
 const subscribedMints = new Set();
+const requestedMints = new Set();
 
 let processingQueue = false;
 
@@ -737,10 +738,12 @@ function startSolanaSocket({
       socket.emit(
         "subscribe_new_tokens",
         {
-          protocols:
-            SOLANA_PROTOCOLS
+          protocols: SOLANA_PROTOCOLS
         }
       );
+
+      // Re-subscribe chart tokens whenever the socket connects or reconnects.
+      requestedMints.forEach((mint) => subscribeToToken(mint));
 
       console.log(
         "FLASHGUYS: subscribed to:",
@@ -819,6 +822,7 @@ function startSolanaSocket({
     }
 
     subscribedMints.clear();
+    requestedMints.clear();
     processedMints.clear();
   };
 }
@@ -883,7 +887,9 @@ export function startLiveFeeds({
 
 // Subscribe the open token chart to the existing real-time Shrine socket.
 export function subscribeLiveToken(mint) {
-  if (!mint || !socket || !socket.connected) return false;
-  subscribeToToken(String(mint));
-  return subscribedMints.has(String(mint));
+  const value = clean(mint);
+  if (!value) return false;
+  requestedMints.add(value);
+  if (socket?.connected) subscribeToToken(value);
+  return Boolean(socket?.connected);
 }

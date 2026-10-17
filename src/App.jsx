@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { fetchGMGNTokens } from "./marketData";
-import { subscribeLiveToken } from "./liveFeeds";
+import { startLiveFeeds, subscribeLiveToken } from "./liveFeeds";
 import "./styles.css";
 
 const MAX_VISIBLE_TOKENS = 50;
@@ -458,6 +458,46 @@ export default function App() {
 
   const [lastUpdated, setLastUpdated] =
     useState(null);
+
+  // Start the real-time Solana socket once for the whole app.
+  useEffect(() => {
+    const stop = startLiveFeeds({
+      onToken: (newToken) => {
+        if (!newToken?.address) return;
+        setTokens((previous) => {
+          const exists = previous.some((item) => item.address === newToken.address);
+          if (exists) return previous.map((item) =>
+            item.address === newToken.address ? { ...item, ...newToken } : item
+          );
+          return [newToken, ...previous].slice(0, MAX_VISIBLE_TOKENS * 3);
+        });
+      },
+      onUpdate: (update) => {
+        if (!update?.mint) return;
+        const applyUpdate = (item) => {
+          if (String(item.address || item.mint || "").toLowerCase() !== String(update.mint).toLowerCase()) return item;
+          return {
+            ...item,
+            ...(Number(update.price) > 0 ? { price: Number(update.price) } : {}),
+            ...(Number(update.marketCap) > 0 ? { marketCap: Number(update.marketCap) } : {}),
+            ...(Number(update.volume24h) > 0 ? { volume24h: Number(update.volume24h) } : {}),
+            ...(Number(update.liquidity) > 0 ? { liquidity: Number(update.liquidity) } : {}),
+            ...(Number(update.change24h) ? { change24h: Number(update.change24h) } : {}),
+            live: true
+          };
+        };
+        setTokens((previous) => previous.map(applyUpdate));
+        setSelectedToken((previous) => previous ? applyUpdate(previous) : previous);
+      },
+      onStatus: (status) => {
+        console.log("FLASHGUYS live feed status:", status);
+      },
+      onError: (err) => {
+        console.warn("FLASHGUYS live feed unavailable:", err?.message || err);
+      }
+    });
+    return () => stop?.();
+  }, []);
 
   async function loadTokens() {
     try {

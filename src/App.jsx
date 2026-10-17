@@ -87,6 +87,32 @@ function TokenLogo({ token }) {
   return <div className="token-logo">{letter}</div>;
 }
 
+function TokenSparkline({ token }) {
+  const history = Array.isArray(token.priceHistory)
+    ? token.priceHistory.map((point) => Number(point.price)).filter((price) => Number.isFinite(price) && price > 0).slice(-24)
+    : [];
+  if (history.length < 2) {
+    return <span className="sparkline-empty" title="Waiting for real price updates">Waiting…</span>;
+  }
+  const width = 96;
+  const height = 30;
+  const pad = 2;
+  const min = Math.min(...history);
+  const max = Math.max(...history);
+  const range = max - min || Math.max(max * 0.001, 1e-12);
+  const points = history.map((price, index) => {
+    const x = pad + (index / Math.max(1, history.length - 1)) * (width - pad * 2);
+    const y = height - pad - ((price - min) / range) * (height - pad * 2);
+    return `${x},${y}`;
+  }).join(" ");
+  const rising = history[history.length - 1] >= history[0];
+  return (
+    <svg className="token-sparkline" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Recent ${token.symbol || "token"} price movement`}>
+      <polyline points={points} fill="none" stroke={rising ? "#55d88a" : "#ff6f7d"} strokeWidth="2" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
 function TokenRow({ token, onClick }) {
   const change = Number(token.change24h || 0);
 
@@ -121,6 +147,8 @@ function TokenRow({ token, onClick }) {
       </td>
 
       <td>{formatPrice(token.price)}</td>
+
+      <td className="sparkline-cell"><TokenSparkline token={token} /></td>
 
       <td>{formatNumber(token.marketCap)}</td>
 
@@ -415,19 +443,11 @@ function LaunchPage() {
           <h3>Robinhood Chain</h3>
 
           <p>
-            Explore the Robinhood Chain ecosystem
-            and its token infrastructure.
+            The in-app Robinhood Chain token-creation flow is not connected yet. We will not pretend a token has been created until a supported launch service is available.
           </p>
 
-          <button
-            className="launch-button"
-            onClick={() =>
-              alert(
-                "Robinhood Chain launch tools will be added here."
-              )
-            }
-          >
-            Coming Soon
+          <button className="launch-button launch-button-disabled" disabled>
+            Creation not connected
           </button>
         </div>
       </div>
@@ -483,20 +503,29 @@ export default function App() {
       onToken: (newToken) => {
         if (!newToken?.address) return;
         setTokens((previous) => {
-          const exists = previous.some((item) => item.address === newToken.address);
+          const mintKey = String(newToken.address || newToken.mint).toLowerCase();
+          const exists = previous.some((item) => String(item.address || item.mint || "").toLowerCase() === mintKey);
           if (exists) return previous.map((item) =>
-            item.address === newToken.address ? { ...item, ...newToken } : item
+            String(item.address || item.mint || "").toLowerCase() === mintKey
+              ? { ...item, ...newToken, priceHistory: item.priceHistory?.length ? item.priceHistory : (Number(newToken.price) > 0 ? [{ time: Date.now(), price: Number(newToken.price) }] : []) }
+              : item
           );
-          return [newToken, ...previous].slice(0, MAX_VISIBLE_TOKENS * 3);
+          const seeded = { ...newToken, priceHistory: Number(newToken.price) > 0 ? [{ time: Date.now(), price: Number(newToken.price) }] : [] };
+          return [seeded, ...previous].slice(0, MAX_VISIBLE_TOKENS * 3);
         });
       },
       onUpdate: (update) => {
         if (!update?.mint) return;
         const applyUpdate = (item) => {
           if (String(item.address || item.mint || "").toLowerCase() !== String(update.mint).toLowerCase()) return item;
+          const nextPrice = Number(update.price);
+          const previousHistory = Array.isArray(item.priceHistory) ? item.priceHistory : [];
+          const nextHistory = nextPrice > 0
+            ? [...previousHistory, { time: Number(update.timestamp) > 0 ? Number(update.timestamp) * 1000 : Date.now(), price: nextPrice }].slice(-24)
+            : previousHistory;
           return {
             ...item,
-            ...(Number(update.price) > 0 ? { price: Number(update.price) } : {}),
+            ...(nextPrice > 0 ? { price: nextPrice, priceHistory: nextHistory } : {}),
             ...(Number(update.marketCap) > 0 ? { marketCap: Number(update.marketCap) } : {}),
             ...(Number(update.volume24h) > 0 ? { volume24h: Number(update.volume24h) } : {}),
             ...(Number(update.liquidity) > 0 ? { liquidity: Number(update.liquidity) } : {}),
@@ -764,6 +793,7 @@ export default function App() {
                       <th>Token</th>
                       <th>Chain</th>
                       <th>Price</th>
+                      <th>Chart</th>
                       <th>Market Cap</th>
                       <th>Liquidity</th>
                       <th>Volume 1h</th>

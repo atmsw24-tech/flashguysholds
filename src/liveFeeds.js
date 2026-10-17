@@ -26,7 +26,8 @@ const subscribedMints = new Set();
 const requestedMints = new Set();
 const observedLaunchMints = new Set();
 
-let processingQueue = false;
+let activeEnrichmentWorkers = 0;
+const MAX_ENRICHMENT_WORKERS = 8;
 
 function clean(value) {
   if (value === undefined || value === null) {
@@ -597,68 +598,42 @@ function queueToken(event) {
   processQueue();
 }
 
-async function processQueue() {
-  if (processingQueue) {
-    return;
-  }
+function processQueue() {
+  if (stopped) return;
 
-  processingQueue = true;
-
+  // Enrich several newly discovered coins concurrently instead of blocking
+  // every later launch behind one slow metadata request.
   while (
     !stopped &&
+    activeEnrichmentWorkers < MAX_ENRICHMENT_WORKERS &&
     enrichmentQueue.length > 0
   ) {
-    const item =
-      enrichmentQueue.shift();
+    const item = enrichmentQueue.shift();
+    if (!item) continue;
 
-    if (!item) {
-      continue;
-    }
-
-    const {
-      mint,
-      event
-    } = item;
-
+    const { mint, event } = item;
     queuedMints.delete(mint);
+    activeEnrichmentWorkers += 1;
 
-    try {
-      const token =
-        await enrichToken(event);
+    enrichToken(event)
+      .then((token) => {
+        if (!token) {
+          console.warn("FLASHGUYS: launch detected but metadata unavailable; waiting for a later event to retry:", mint);
+          return;
+        }
 
-      processedMints.add(mint);
-
-      if (token) {
+        processedMints.add(mint);
         subscribeToToken(mint);
-
-        window.dispatchEvent(
-          new CustomEvent(
-            "flashguys:solana-token",
-            {
-              detail: token
-            }
-          )
-        );
-      }
-    } catch (error) {
-      console.error(
-        "FLASHGUYS token enrichment error:",
-        error
-      );
-    }
-
-    /*
-     * Shrine REST endpoints have rate limits.
-     * Slow the queue down so a busy launch period
-     * does not hammer the API.
-     */
-
-    await sleep(
-      ENRICH_DELAY_MS
-    );
+        window.dispatchEvent(new CustomEvent("flashguys:solana-token", { detail: token }));
+      })
+      .catch((error) => {
+        console.error("FLASHGUYS token enrichment error:", error);
+      })
+      .finally(() => {
+        activeEnrichmentWorkers = Math.max(0, activeEnrichmentWorkers - 1);
+        processQueue();
+      });
   }
-
-  processingQueue = false;
 }
 
 function updateTokenFromLiveEvent(update) {

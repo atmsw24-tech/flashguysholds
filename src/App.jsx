@@ -4,7 +4,8 @@ import { startLiveFeeds, subscribeLiveToken } from "./liveFeeds";
 import AccountPanel from "./AccountPanel";
 import "./styles.css";
 
-const MAX_VISIBLE_TOKENS = 50;
+const MAX_VISIBLE_TOKENS = 300;
+const MAX_STORED_TOKENS = 1500;
 
 function formatNumber(value) {
   const number = Number(value || 0);
@@ -518,7 +519,7 @@ export default function App() {
             return { ...item, ...newToken, priceHistory: history.slice(-24) };
           });
           const seeded = { ...newToken, priceHistory: Number(newToken.price) > 0 ? [{ time: Date.now(), price: Number(newToken.price) }] : [] };
-          return [seeded, ...previous].slice(0, MAX_VISIBLE_TOKENS * 3);
+          return [seeded, ...previous].slice(0, MAX_STORED_TOKENS);
         });
       },
       onUpdate: (update) => {
@@ -599,12 +600,9 @@ export default function App() {
     } catch (err) {
       console.error(err);
 
-      setError(
-        err?.message ||
-        "Unable to load tokens."
-      );
-
-      setTokens([]);
+      // Keep previously loaded and live tokens visible when a refresh fails.
+      // A temporary API error must never wipe the existing market list.
+      setError(err?.message || "Unable to refresh token data.");
     } finally {
       setLoading(false);
     }
@@ -797,11 +795,11 @@ export default function App() {
             </section>
 
             <section className="token-card">
-              {loading ? (
+              {loading && tokens.length === 0 ? (
                 <div className="status">
                   Loading tokens...
                 </div>
-              ) : error ? (
+              ) : error && filteredTokens.length === 0 ? (
                 <div className="status error">
                   {error}
                 </div>
@@ -847,9 +845,10 @@ export default function App() {
               )}
             </section>
 
+            {error && filteredTokens.length > 0 ? <div className="status error">Refresh issue: {error}. Keeping previously loaded coins visible.</div> : null}
             <div
               style={{
-                marginTop: "14px",
+                marginTop: "14",
                 display: "flex",
                 justifyContent:
                   "space-between",

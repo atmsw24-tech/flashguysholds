@@ -879,3 +879,11 @@ export function startLiveFeeds({
     stop?.();
   };
 }
+
+
+// Subscribe the open token chart to the existing real-time Shrine socket.
+export function subscribeLiveToken(mint) {
+  if (!mint || !socket || !socket.connected) return false;
+  subscribeToToken(String(mint));
+  return subscribedMints.has(String(mint));
+}

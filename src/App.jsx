@@ -144,79 +144,77 @@ function TokenRow({ token, onClick }) {
 }
 
 function PriceChart({ token }) {
-  const history =
-    token?.priceHistory ||
-    token?.chart ||
-    [];
+  const [history, setHistory] = useState([]);
+  const [chartError, setChartError] = useState("");
+  const [chartLoading, setChartLoading] = useState(false);
 
-  if (!Array.isArray(history) || history.length < 2) {
-    return (
-      <div className="chart-empty">
-        Chart data unavailable for this token.
-      </div>
-    );
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadHistory() {
+      if (!token?.address || token.chain === "robinhood") {
+        setHistory([]);
+        setChartError(token?.chain === "robinhood"
+          ? "Historical charts are not enabled for this chain yet."
+          : "Token address is missing.");
+        return;
+      }
+
+      setChartLoading(true);
+      setChartError("");
+      try {
+        const response = await fetch(
+          `/api/chart?address=${encodeURIComponent(token.address)}&chain=sol`
+        );
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Chart data unavailable");
+        if (!cancelled) {
+          setHistory(Array.isArray(data.history) ? data.history : []);
+          if (!Array.isArray(data.history) || data.history.length < 2) {
+            setChartError(data.error || "Not enough historical price data yet.");
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setHistory([]);
+          setChartError(error?.message || "Chart data unavailable.");
+        }
+      } finally {
+        if (!cancelled) setChartLoading(false);
+      }
+    }
+
+    loadHistory();
+    return () => { cancelled = true; };
+  }, [token?.address, token?.chain]);
+
+  if (chartLoading) {
+    return <div className="chart-empty">Loading price history...</div>;
   }
 
   const values = history
-    .map((item) => {
-      if (typeof item === "number") {
-        return item;
-      }
-
-      return Number(
-        item?.price ??
-        item?.value ??
-        0
-      );
-    })
-    .filter((value) => Number.isFinite(value));
+    .map((item) => Number(item?.price ?? item?.value ?? item))
+    .filter((value) => Number.isFinite(value) && value > 0);
 
   if (values.length < 2) {
-    return (
-      <div className="chart-empty">
-        Chart data unavailable for this token.
-      </div>
-    );
+    return <div className="chart-empty">{chartError || "Chart data unavailable for this token."}</div>;
   }
 
   const width = 700;
   const height = 220;
   const padding = 12;
-
   const min = Math.min(...values);
   const max = Math.max(...values);
-  const range = max - min || 1;
-
-  const points = values
-    .map((value, index) => {
-      const x =
-        padding +
-        (index / (values.length - 1)) *
-          (width - padding * 2);
-
-      const y =
-        height -
-        padding -
-        ((value - min) / range) *
-          (height - padding * 2);
-
-      return `${x},${y}`;
-    })
-    .join(" ");
+  const range = max - min || Math.max(max * 0.01, 0.000000001);
+  const points = values.map((value, index) => {
+    const x = padding + (index / (values.length - 1)) * (width - padding * 2);
+    const y = height - padding - ((value - min) / range) * (height - padding * 2);
+    return `${x},${y}`;
+  }).join(" ");
 
   return (
-    <svg
-      className="chart"
-      viewBox={`0 0 ${width} ${height}`}
-      preserveAspectRatio="none"
-    >
-      <polyline
-        points={points}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="3"
-        vectorEffect="non-scaling-stroke"
-      />
+    <svg className="chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Historical token price chart">
+      <polyline points={points} fill="none" stroke="currentColor" strokeWidth="3" vectorEffect="non-scaling-stroke" />
     </svg>
   );
 }

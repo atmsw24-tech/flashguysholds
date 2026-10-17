@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { fetchGMGNTokens } from "./marketData";
 import { startLiveFeeds, subscribeLiveToken } from "./liveFeeds";
 import AccountPanel from "./AccountPanel";
@@ -460,7 +460,22 @@ export default function App() {
   const [lastUpdated, setLastUpdated] =
     useState(null);
 
+  const [liveLaunchCount, setLiveLaunchCount] = useState(0);
+  const seenLiveLaunches = useRef(new Set());
+
   const [accountOpen, setAccountOpen] = useState(false);
+
+  // Count unique launch events from the live feed during this browser session.
+  useEffect(() => {
+    const handleNewLaunch = (event) => {
+      const mint = String(event?.detail?.mint || "").trim().toLowerCase();
+      if (!mint || seenLiveLaunches.current.has(mint)) return;
+      seenLiveLaunches.current.add(mint);
+      setLiveLaunchCount(seenLiveLaunches.current.size);
+    };
+    window.addEventListener("flashguys:new-launch", handleNewLaunch);
+    return () => window.removeEventListener("flashguys:new-launch", handleNewLaunch);
+  }, []);
 
   // Start the real-time Solana socket once for the whole app.
   useEffect(() => {
@@ -510,9 +525,23 @@ export default function App() {
       const data =
         await fetchGMGNTokens(chain);
 
-      setTokens(
-        Array.isArray(data) ? data : []
-      );
+      // Merge API results with live launches instead of erasing launches
+      // received from the socket between polling requests.
+      const apiTokens = Array.isArray(data) ? data : [];
+      setTokens((previous) => {
+        const merged = new Map();
+        apiTokens.forEach((token) => {
+          const key = String(token.address || token.mint || token.id || "").toLowerCase();
+          if (key) merged.set(key, token);
+        });
+        previous.forEach((token) => {
+          const key = String(token.address || token.mint || token.id || "").toLowerCase();
+          if (!key) return;
+          const current = merged.get(key);
+          merged.set(key, current ? { ...token, ...current } : token);
+        });
+        return [...merged.values()].sort((a, b) => Number(b.createdAt || b.timestamp || 0) - Number(a.createdAt || a.timestamp || 0)).slice(0, MAX_VISIBLE_TOKENS * 3);
+      });
 
       setLastUpdated(new Date());
     } catch (err) {
@@ -775,8 +804,7 @@ export default function App() {
               }}
             >
               <span>
-                Showing{" "}
-                {filteredTokens.length} tokens
+                Showing {filteredTokens.length} tokens · Live launches detected this session: {liveLaunchCount}
               </span>
 
               <span>

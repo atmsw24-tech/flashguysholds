@@ -116,6 +116,21 @@ function TokenSparkline({ token }) {
 
 function TokenRow({ token, onClick }) {
   const change = Number(token.change24h || 0);
+  const [copiedCA, setCopiedCA] = useState(false);
+  const contractAddress = String(token.address || token.mint || "").trim();
+
+  async function copyContractAddress(event) {
+    event.stopPropagation();
+    if (!contractAddress) return;
+    try {
+      await navigator.clipboard.writeText(contractAddress);
+      setCopiedCA(true);
+      window.setTimeout(() => setCopiedCA(false), 1500);
+    } catch (error) {
+      // Keep the address visible so it can still be selected and copied manually.
+      setCopiedCA(false);
+    }
+  }
 
   return (
     <tr
@@ -145,6 +160,17 @@ function TokenRow({ token, onClick }) {
             ? "Robinhood"
             : "Solana"}
         </span>
+      </td>
+
+      <td>
+        {contractAddress ? (
+          <div className="contract-address-cell" title={contractAddress}>
+            <code>{`${contractAddress.slice(0, 5)}…${contractAddress.slice(-5)}`}</code>
+            <button type="button" className="copy-ca-button" onClick={copyContractAddress} aria-label={`Copy contract address for ${token.symbol || token.name || "token"}`}>
+              {copiedCA ? "Copied!" : "Copy CA"}
+            </button>
+          </div>
+        ) : <span className="sparkline-empty">Pending…</span>}
       </td>
 
       <td>{formatPrice(token.price)}</td>
@@ -814,6 +840,7 @@ export default function App() {
                     <tr>
                       <th>Token</th>
                       <th>Chain</th>
+                      <th>Contract Address</th>
                       <th>Price</th>
                       <th>Chart</th>
                       <th>Market Cap</th>

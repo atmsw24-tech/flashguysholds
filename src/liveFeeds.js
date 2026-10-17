@@ -4,6 +4,7 @@ const SOLANA_SOCKET_URL = "https://sol.shrine.trade";
 
 const SOLANA_PROTOCOLS = [
   "PUMPFUN",
+  "PUMPFUN_MAYHEM",
   "PUMPSWAP",
   "METEORA",
   "RAYDIUM",
@@ -525,12 +526,16 @@ function queueToken(event) {
     return;
   }
 
-  // Count each raw launch event once, even if metadata enrichment is not ready yet.
-  if (!observedLaunchMints.has(mint)) {
+  // Count actual token launches, not ordinary AMM pools created for existing tokens.
+  const protocol = clean(event?.protocol).toUpperCase();
+  const hasLaunchMetadata = Boolean(clean(event?.name) && clean(event?.symbol));
+  const isLaunchpadMint = ["PUMPFUN", "PUMPFUN_MAYHEM", "BONK", "STONKFUN"].includes(protocol)
+    || (protocol === "METEORA" && hasLaunchMetadata);
+  if (isLaunchpadMint && !observedLaunchMints.has(mint)) {
     observedLaunchMints.add(mint);
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("flashguys:new-launch", {
-        detail: { mint, timestamp: Number(event?.timestamp) || Math.floor(Date.now() / 1000), protocol: clean(event?.protocol) }
+        detail: { mint, timestamp: Number(event?.timestamp) || Math.floor(Date.now() / 1000), protocol }
       }));
     }
   }

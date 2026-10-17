@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { fetchGMGNTokens } from "./marketData";
 import { startLiveFeeds, subscribeLiveToken } from "./liveFeeds";
+import AccountPanel from "./AccountPanel";
 import "./styles.css";
 
 const MAX_VISIBLE_TOKENS = 50;
@@ -459,6 +460,8 @@ export default function App() {
   const [lastUpdated, setLastUpdated] =
     useState(null);
 
+  const [accountOpen, setAccountOpen] = useState(false);
+
   // Start the real-time Solana socket once for the whole app.
   useEffect(() => {
     const stop = startLiveFeeds({
@@ -630,6 +633,9 @@ export default function App() {
             Launch
           </button>
         </nav>
+        <button className="account-open-button" onClick={() => setAccountOpen(true)}>
+          <span className="account-open-icon">↗</span> Account / Connect Wallet
+        </button>
       </header>
 
       <main className="main">
@@ -787,6 +793,8 @@ export default function App() {
         FLASHGUYS — Independent crypto
         discovery platform.
       </footer>
+
+      {accountOpen ? <AccountPanel onClose={() => setAccountOpen(false)} /> : null}
 
       <TokenModal
         token={selectedToken}

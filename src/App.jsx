@@ -147,75 +147,105 @@ function PriceChart({ token }) {
   const [history, setHistory] = useState([]);
   const [chartError, setChartError] = useState("");
   const [chartLoading, setChartLoading] = useState(false);
+  const [livePrice, setLivePrice] = useState(Number(token?.price || 0));
+  const [updatedAt, setUpdatedAt] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadHistory() {
+    async function loadChart() {
       if (!token?.address || token.chain === "robinhood") {
         setHistory([]);
         setChartError(token?.chain === "robinhood"
-          ? "Historical charts are not enabled for this chain yet."
+          ? "Live charting for Robinhood Chain is not configured yet."
           : "Token address is missing.");
         return;
       }
 
       setChartLoading(true);
-      setChartError("");
       try {
         const response = await fetch(
-          `/api/chart?address=${encodeURIComponent(token.address)}&chain=sol`
+          `/api/chart?address=${encodeURIComponent(token.address)}&chain=sol&_=${Date.now()}`,
+          { cache: "no-store", headers: { Accept: "application/json" } }
         );
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Chart data unavailable");
+        if (!response.ok) throw new Error(data.error || "Live price unavailable");
+
         if (!cancelled) {
-          setHistory(Array.isArray(data.history) ? data.history : []);
-          if (!Array.isArray(data.history) || data.history.length < 2) {
-            setChartError(data.error || "Not enough historical price data yet.");
+          const price = Number(data.price || 0);
+          if (price > 0) {
+            setLivePrice(price);
+            setHistory((previous) => {
+              const base = Array.isArray(data.history) ? data.history : [];
+              const combined = [...base, ...previous.filter((point) =>
+                !base.some((item) => Number(item.time) === Number(point.time))
+              )];
+              const now = Date.now();
+              const next = [...combined, { time: now, price }];
+              const unique = new Map();
+              next.forEach((point) => {
+                const p = Number(point.price);
+                const t = Number(point.time || now);
+                if (Number.isFinite(p) && p > 0) unique.set(t, { time: t, price: p });
+              });
+              return [...unique.values()].sort((a, b) => a.time - b.time).slice(-80);
+            });
+          } else if (Array.isArray(data.history) && data.history.length) {
+            setHistory(data.history);
           }
+          setUpdatedAt(new Date());
+          setChartError(data.historyWarning || "");
         }
       } catch (error) {
-        if (!cancelled) {
-          setHistory([]);
-          setChartError(error?.message || "Chart data unavailable.");
-        }
+        if (!cancelled) setChartError(error?.message || "Could not load live price.");
       } finally {
         if (!cancelled) setChartLoading(false);
       }
     }
 
-    loadHistory();
-    return () => { cancelled = true; };
+    loadChart();
+    const interval = setInterval(loadChart, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [token?.address, token?.chain]);
 
-  if (chartLoading) {
-    return <div className="chart-empty">Loading price history...</div>;
-  }
-
   const values = history
-    .map((item) => Number(item?.price ?? item?.value ?? item))
-    .filter((value) => Number.isFinite(value) && value > 0);
+    .map((item) => ({ time: Number(item?.time || Date.now()), price: Number(item?.price ?? item?.value ?? item) }))
+    .filter((point) => Number.isFinite(point.price) && point.price > 0);
 
   if (values.length < 2) {
-    return <div className="chart-empty">{chartError || "Chart data unavailable for this token."}</div>;
+    return (
+      <div className="chart-empty">
+        {chartLoading ? "Connecting to live market data..." : (chartError || "Waiting for enough live price points to draw chart.")}
+      </div>
+    );
   }
 
   const width = 700;
   const height = 220;
   const padding = 12;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || Math.max(max * 0.01, 0.000000001);
-  const points = values.map((value, index) => {
+  const min = Math.min(...values.map((point) => point.price));
+  const max = Math.max(...values.map((point) => point.price));
+  const range = max - min || Math.max(max * 0.002, 0.000000001);
+  const points = values.map((point, index) => {
     const x = padding + (index / (values.length - 1)) * (width - padding * 2);
-    const y = height - padding - ((value - min) / range) * (height - padding * 2);
+    const y = height - padding - ((point.price - min) / range) * (height - padding * 2);
     return `${x},${y}`;
   }).join(" ");
 
   return (
-    <svg className="chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Historical token price chart">
-      <polyline points={points} fill="none" stroke="currentColor" strokeWidth="3" vectorEffect="non-scaling-stroke" />
-    </svg>
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", marginBottom: "10px", fontSize: "12px" }}>
+        <strong>Live price: {formatPrice(livePrice)}</strong>
+        <span style={{ color: "#7b8493" }}>{updatedAt ? `Updated ${updatedAt.toLocaleTimeString()}` : "Connecting..."}</span>
+      </div>
+      <svg className="chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Live token price chart">
+        <polyline points={points} fill="none" stroke="currentColor" strokeWidth="3" vectorEffect="non-scaling-stroke" />
+      </svg>
+      {chartError ? <div className="chart-empty">{chartError}</div> : null}
+    </div>
   );
 }
 

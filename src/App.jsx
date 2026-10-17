@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { fetchGMGNTokens } from "./marketData";
+import { subscribeLiveToken } from "./liveFeeds";
 import "./styles.css";
 
 const MAX_VISIBLE_TOKENS = 50;
@@ -146,86 +147,100 @@ function TokenRow({ token, onClick }) {
 function PriceChart({ token }) {
   const [history, setHistory] = useState([]);
   const [chartError, setChartError] = useState("");
-  const [chartLoading, setChartLoading] = useState(false);
+  const [chartLoading, setChartLoading] = useState(true);
   const [livePrice, setLivePrice] = useState(Number(token?.price || 0));
   const [updatedAt, setUpdatedAt] = useState(null);
+  const [liveConnected, setLiveConnected] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     let inFlight = false;
+    const mint = token?.address || token?.mint;
+    const isSolana = token?.chain === "solana" || token?.chain === "sol" || !token?.chain;
 
-    if (!token?.address || token.chain === "robinhood") {
+    if (!mint || !isSolana) {
       setHistory([]);
-      setChartError(token?.chain === "robinhood"
-        ? "Live charting for Robinhood Chain is not configured yet."
-        : "Token address is missing.");
+      setChartLoading(false);
+      setLiveConnected(false);
+      setChartError(!mint ? "Token address is missing." : "Real-time trade chart is currently supported for Solana tokens only.");
       return undefined;
     }
 
-    async function loadLivePrice() {
+    const appendPoint = (price, time = Date.now()) => {
+      const value = Number(price);
+      if (!(value > 0) || !Number.isFinite(value)) return;
+      setLivePrice(value);
+      setHistory((previous) => {
+        const next = [...previous, { time: Number(time) || Date.now(), price: value }]
+          .filter((point) => Number.isFinite(point.time) && point.price > 0)
+          .sort((a, b) => a.time - b.time);
+        // Keep actual provider history plus recent real-time updates.
+        return next.slice(-180);
+      });
+      setUpdatedAt(new Date());
+      setChartError("");
+    };
+
+    const handleLiveUpdate = (event) => {
+      const update = event?.detail;
+      const updateMint = String(update?.mint || "").toLowerCase();
+      if (!updateMint || updateMint !== String(mint).toLowerCase()) return;
+      const price = Number(update.price);
+      if (price > 0) {
+        appendPoint(price, Number(update.timestamp) > 0
+          ? Number(update.timestamp) * 1000
+          : Date.now());
+        setLiveConnected(true);
+      }
+    };
+
+    window.addEventListener("flashguys:solana-update", handleLiveUpdate);
+    const subscribed = subscribeLiveToken(mint);
+    setLiveConnected(Boolean(subscribed));
+
+    async function loadInitialHistory() {
       if (inFlight) return;
       inFlight = true;
-      setChartLoading(true);
-
       try {
         const response = await fetch(
-          `/api/chart?address=${encodeURIComponent(token.address)}&chain=sol&_=${Date.now()}`,
+          `/api/chart?address=${encodeURIComponent(mint)}&chain=sol&_=${Date.now()}`,
           { cache: "no-store", headers: { Accept: "application/json" } }
         );
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Live price unavailable");
-
-        const price = Number(data.price || 0);
-        if (!cancelled && price > 0) {
-          setLivePrice(price);
+        if (!response.ok) throw new Error(data.error || "Market data unavailable");
+        if (cancelled) return;
+        if (Number(data.price) > 0) setLivePrice(Number(data.price));
+        const points = Array.isArray(data.history) ? data.history
+          .map((point) => ({ time: Number(point.time), price: Number(point.price) }))
+          .filter((point) => point.time > 0 && point.price > 0) : [];
+        if (points.length) {
           setHistory((previous) => {
-            const incoming = Array.isArray(data.history) ? data.history : [];
             const merged = new Map();
-            [...incoming, ...previous].forEach((point) => {
-              const time = Number(point.time);
-              const value = Number(point.price ?? point.value);
-              if (Number.isFinite(time) && Number.isFinite(value) && value > 0) {
-                merged.set(time, { time, price: value });
-              }
-            });
-            const now = Date.now();
-            merged.set(now, { time: now, price });
-            return [...merged.values()].sort((a, b) => a.time - b.time).slice(-120);
+            [...points, ...previous].forEach((point) => merged.set(point.time, point));
+            return [...merged.values()].sort((a, b) => a.time - b.time).slice(-180);
           });
-          setUpdatedAt(new Date());
-          setChartError(data.historyWarning || "");
+        } else if (Number(data.price) > 0) {
+          appendPoint(Number(data.price));
         }
+        setUpdatedAt(new Date());
+        if (data.historyWarning) setChartError(data.historyWarning);
       } catch (error) {
-        if (!cancelled) setChartError(error?.message || "Could not load live price.");
+        if (!cancelled) setChartError(error?.message || "Could not load market data.");
       } finally {
         inFlight = false;
         if (!cancelled) setChartLoading(false);
       }
     }
 
-    loadLivePrice();
-    // Provider requests are limited; fetch actual market price every 5 seconds.
-    const priceInterval = setInterval(loadLivePrice, 5000);
-
-    // Advance the time axis every second using the latest real provider price.
-    // No synthetic price movement is invented between provider updates.
-    const tickInterval = setInterval(() => {
-      if (cancelled) return;
-      setHistory((previous) => {
-        const price = Number(livePrice);
-        if (!(price > 0)) return previous;
-        const now = Date.now();
-        const next = [...previous, { time: now, price }].slice(-120);
-        return next;
-      });
-    }, 1000);
-
+    loadInitialHistory();
+    // Fallback price refresh; the live socket above is the primary chart update source.
+    const fallback = setInterval(loadInitialHistory, 10000);
     return () => {
       cancelled = true;
-      clearInterval(priceInterval);
-      clearInterval(tickInterval);
+      clearInterval(fallback);
+      window.removeEventListener("flashguys:solana-update", handleLiveUpdate);
     };
-  }, [token?.address, token?.chain, livePrice]);
+  }, [token?.address, token?.mint, token?.chain]);
 
   const values = history
     .map((item) => ({ time: Number(item?.time || Date.now()), price: Number(item?.price ?? item?.value ?? item) }))
@@ -234,7 +249,7 @@ function PriceChart({ token }) {
   if (values.length < 2) {
     return (
       <div className="chart-empty">
-        {chartLoading ? "Connecting to live market data..." : (chartError || "Waiting for live price data.")}
+        {chartLoading ? "Connecting to live market data..." : (chartError || "Waiting for live market updates.")}
       </div>
     );
   }
@@ -246,7 +261,7 @@ function PriceChart({ token }) {
   const max = Math.max(...values.map((point) => point.price));
   const range = max - min || Math.max(max * 0.002, 0.000000001);
   const points = values.map((point, index) => {
-    const x = padding + (index / (values.length - 1)) * (width - padding * 2);
+    const x = padding + (index / Math.max(1, values.length - 1)) * (width - padding * 2);
     const y = height - padding - ((point.price - min) / range) * (height - padding * 2);
     return `${x},${y}`;
   }).join(" ");
@@ -255,15 +270,15 @@ function PriceChart({ token }) {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", marginBottom: "10px", fontSize: "12px" }}>
         <strong>Live price: {formatPrice(livePrice)}</strong>
-        <span style={{ color: "#7b8493" }}>
-          {updatedAt ? `Market updated ${updatedAt.toLocaleTimeString()}` : "Connecting..."}
+        <span style={{ color: liveConnected ? "#16a34a" : "#7b8493" }}>
+          {liveConnected ? "LIVE FEED" : (updatedAt ? `Last update ${updatedAt.toLocaleTimeString()}` : "Connecting...")}
         </span>
       </div>
-      <svg className="chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Live token price chart updated every second">
+      <svg className="chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Live Solana token price chart">
         <polyline points={points} fill="none" stroke="currentColor" strokeWidth="3" vectorEffect="non-scaling-stroke" />
       </svg>
       <div style={{ fontSize: "11px", color: "#7b8493", marginTop: "6px" }}>
-        Chart redraws every second; market price refreshes about every 5 seconds.
+        Updates from the live token feed when new market updates arrive.
       </div>
       {chartError ? <div className="chart-empty">{chartError}</div> : null}
     </div>

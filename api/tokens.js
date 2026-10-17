@@ -80,11 +80,59 @@ async function getSolanaTokens() {
 }
 
 async function getRobinhoodTokens() {
-  const endpoint = process.env.ROBINHOOD_TOKEN_API_URL;
-  if (!endpoint) return [];
-  const response = await fetch(endpoint, { headers: { Accept: "application/json" } });
-  if (!response.ok) throw new Error(`Robinhood token source returned ${response.status}`);
-  return normalizeRobinhoodPayload(await response.json());
+  // Use DexScreener's real Robinhood Chain market data directly, rather than
+  // requiring an undocumented custom feed URL in Vercel.
+  const response = await fetch(`${DEX}/token-profiles/latest/v1`);
+  if (!response.ok) throw new Error(`DexScreener profiles returned ${response.status}`);
+
+  const profiles = await response.json();
+  const robinhoodProfiles = (Array.isArray(profiles) ? profiles : [])
+    .filter((token) => token.chainId === "robinhood" && token.tokenAddress)
+    .slice(0, 40);
+
+  const results = await Promise.all(robinhoodProfiles.map(async (token) => {
+    try {
+      const r = await fetch(`${DEX}/token-pairs/v1/robinhood/${encodeURIComponent(token.tokenAddress)}`);
+      if (!r.ok) return null;
+      const pairs = await r.json();
+      if (!Array.isArray(pairs) || !pairs.length) return null;
+
+      // Only use a market where the profile's contract is the base token,
+      // so the returned price and symbol refer to the same asset.
+      const pair = pairs
+        .filter((p) =>
+          String(p.baseToken?.address || "").toLowerCase() === String(token.tokenAddress).toLowerCase()
+          && Number(p.priceUsd) > 0
+        )
+        .sort((a, b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0))[0];
+
+      if (!pair) return null;
+
+      return {
+        id: pair.pairAddress || token.tokenAddress,
+        chain: "robinhood",
+        address: token.tokenAddress,
+        name: pair.baseToken?.name || "Unknown",
+        symbol: pair.baseToken?.symbol || "???",
+        price: Number(pair.priceUsd || 0),
+        marketCap: Number(pair.marketCap || pair.fdv || 0),
+        liquidity: Number(pair.liquidity?.usd || 0),
+        volume1h: Number(pair.volume?.h1 || 0),
+        volume24h: Number(pair.volume?.h24 || 0),
+        change24h: Number(pair.priceChange?.h24 || 0),
+        pairAddress: pair.pairAddress || null,
+        pairUrl: pair.url || token.url || null,
+        logo: pair.info?.imageUrl || token.icon || null,
+        createdAt: pair.pairCreatedAt || null,
+        priceHistory: []
+      };
+    } catch (error) {
+      console.error("Robinhood pair lookup failed:", error?.message || error);
+      return null;
+    }
+  }));
+
+  return results.filter(Boolean);
 }
 
 export default async function handler(req, res) {
@@ -127,9 +175,7 @@ export default async function handler(req, res) {
       tokens,
       updatedAt: new Date().toISOString(),
       source: "DexScreener" + (process.env.ROBINHOOD_TOKEN_API_URL ? " + configured Robinhood feed" : ""),
-      note: process.env.ROBINHOOD_TOKEN_API_URL
-        ? null
-        : "Solana live feed enabled. Set ROBINHOOD_TOKEN_API_URL in Vercel to enable Robinhood Chain tokens.",
+      note: null,
       warnings: errors
     });
   } catch (error) {

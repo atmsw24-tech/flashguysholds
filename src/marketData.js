@@ -90,10 +90,9 @@ export async function fetchGMGNTokens(chain = "all") {
 
   const data = await response.json();
 
-  if (
-    !data.success ||
-    !Array.isArray(data.tokens)
-  ) {
+  // The /api/tokens endpoint returns { tokens, source, updatedAt }.
+  // Do not require a "success" flag that the endpoint does not send.
+  if (!Array.isArray(data.tokens)) {
     throw new Error(
       data.error ||
       "Token API returned no token list"

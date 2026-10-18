@@ -44,8 +44,36 @@ export default function AccountPanel({ onClose }) {
     const listener = () => {
       try { setWallet(JSON.parse(localStorage.getItem(WALLET_KEY) || "null")); } catch {}
     };
+    const onAccountsChanged = (accounts) => {
+      setWallet((current) => {
+        if (!current || current.chain !== "evm") return current;
+        const address = Array.isArray(accounts) ? accounts[0] : "";
+        if (!address) {
+          localStorage.removeItem(WALLET_KEY);
+          window.dispatchEvent(new Event("flashguys:wallet"));
+          return null;
+        }
+        const next = { ...current, address };
+        localStorage.setItem(WALLET_KEY, JSON.stringify(next));
+        return next;
+      });
+    };
+    const onChainChanged = (chainId) => {
+      setWallet((current) => {
+        if (!current || current.chain !== "evm") return current;
+        const next = { ...current, chainId: String(chainId || "") };
+        localStorage.setItem(WALLET_KEY, JSON.stringify(next));
+        return next;
+      });
+    };
     window.addEventListener("flashguys:wallet", listener);
-    return () => window.removeEventListener("flashguys:wallet", listener);
+    window.ethereum?.on?.("accountsChanged", onAccountsChanged);
+    window.ethereum?.on?.("chainChanged", onChainChanged);
+    return () => {
+      window.removeEventListener("flashguys:wallet", listener);
+      window.ethereum?.removeListener?.("accountsChanged", onAccountsChanged);
+      window.ethereum?.removeListener?.("chainChanged", onChainChanged);
+    };
   }, []);
 
   async function submit(event) {
@@ -96,6 +124,13 @@ export default function AccountPanel({ onClose }) {
         const accounts = await provider.request({ method: "eth_requestAccounts" });
         address = accounts?.[0] || "";
         if (!address) throw new Error("Wallet did not return a public address.");
+        const chainId = await provider.request({ method: "eth_chainId" });
+        const connected = { chain: kind, address, chainId: String(chainId || ""), connectedAt: new Date().toISOString() };
+        localStorage.setItem(WALLET_KEY, JSON.stringify(connected));
+        setWallet(connected);
+        window.dispatchEvent(new Event("flashguys:wallet"));
+        setMessage("EVM wallet connected. Check its network before using chain-specific features. No transaction was sent.");
+        return;
       }
       const connected = { chain: kind, address, connectedAt: new Date().toISOString() };
       localStorage.setItem(WALLET_KEY, JSON.stringify(connected));
@@ -156,16 +191,16 @@ export default function AccountPanel({ onClose }) {
         {wallet ? (
           <div className="wallet-connected">
             <div className="wallet-dot" />
-            <div className="wallet-details"><strong>{wallet.chain === "solana" ? "Solana wallet" : "EVM wallet"}</strong><span>{shortAddress(wallet.address)}</span></div>
+            <div className="wallet-details"><strong>{wallet.chain === "solana" ? "Solana wallet" : "EVM wallet"}</strong><span>{shortAddress(wallet.address)}{wallet.chain === "evm" && wallet.chainId ? ` · Network ID ${wallet.chainId}` : ""}</span></div>
             <button className="account-secondary" onClick={disconnectWallet}>Disconnect</button>
           </div>
         ) : (
           <div className="wallet-buttons">
             <button className="wallet-button" onClick={() => connectWallet("solana")}><span className="wallet-symbol solana-symbol">S</span><span><strong>Solana wallet</strong><small>Phantom / Solflare</small></span><b>Connect</b></button>
-            <button className="wallet-button" onClick={() => connectWallet("evm")}><span className="wallet-symbol evm-symbol">◇</span><span><strong>EVM wallet</strong><small>MetaMask / compatible</small></span><b>Connect</b></button>
+            <button className="wallet-button" onClick={() => connectWallet("evm")}><span className="wallet-symbol evm-symbol">◇</span><span><strong>EVM wallet</strong><small>MetaMask / compatible EVM wallet</small></span><b>Connect</b></button>
           </div>
         )}
-        <p className="account-safety">FLASHGUYS never asks for your seed phrase or private key. Connecting a wallet does not send a transaction.</p>
+        <p className="account-safety">FLASHGUYS never asks for your seed phrase or private key. Connecting a wallet does not send a transaction. The EVM network ID is shown for verification; network switching and trading are not enabled by this connection button.</p>
         {message ? <div className="account-message" role="status">{message}</div> : null}
       </section>
     </div>

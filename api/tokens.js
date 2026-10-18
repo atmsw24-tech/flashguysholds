@@ -136,7 +136,7 @@ async function getRobinhoodTokens() {
 }
 
 export default async function handler(req, res) {
-  res.setHeader("Cache-Control", "s-maxage=15, stale-while-revalidate=30");
+  res.setHeader("Cache-Control", "s-maxage=5, stale-while-revalidate=10");
   res.setHeader("Access-Control-Allow-Origin", "*");
 
   if (req.method !== "GET") {

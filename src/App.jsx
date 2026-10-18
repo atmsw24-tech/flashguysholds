@@ -749,6 +749,7 @@ export default function App() {
             Launch
           </button>
         </nav>
+        <button type="button" className="flashboys-launch-cta" onClick={() => setPage("launch")} aria-label="Open Flashboys token launch options"><span className="flashboys-launch-bolt" aria-hidden="true">⚡</span><span>Launch on Flashboys</span></button>
         <button className="account-open-button" onClick={() => setAccountOpen(true)}>
           <span className="account-open-icon" aria-hidden="true">↗</span><span className="account-open-label">Account / Connect Wallet</span>
         </button>

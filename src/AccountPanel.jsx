@@ -226,8 +226,8 @@ export default function AccountPanel({ onClose }) {
           </div>
         ) : (
           <div className="wallet-buttons">
-            <button className="wallet-button" onClick={() => connectWallet("solana")}><span className="wallet-symbol solana-symbol">S</span><span><strong>Solana wallet</strong><small>Phantom or Solflare</small></span><b>Connect</b></button>
-            <button className="wallet-button" onClick={() => connectWallet("evm")}><span className="wallet-symbol evm-symbol">◇</span><span><strong>EVM wallet</strong><small>MetaMask or compatible EVM wallet</small></span><b>Connect</b></button>
+            <button type="button" className="wallet-button" onClick={() => connectWallet("solana")}><span className="wallet-symbol solana-symbol">S</span><span><strong>Solana wallet</strong><small>Phantom or Solflare</small></span><b>Connect</b></button>
+            <button type="button" className="wallet-button" onClick={() => connectWallet("evm")}><span className="wallet-symbol evm-symbol">◇</span><span><strong>EVM wallet</strong><small>MetaMask or compatible EVM wallet</small></span><b>Connect</b></button>
           </div>
         )}
         <p className="account-safety">FLASHGUYS never asks for your seed phrase or private key. Connecting a wallet does not send a transaction. The EVM network ID is shown for verification; network switching and trading are not enabled by this connection button.</p>

@@ -645,7 +645,7 @@ export default function App() {
 
     const interval = setInterval(
       loadTokens,
-      10000
+      5000
     );
 
     return () => clearInterval(interval);

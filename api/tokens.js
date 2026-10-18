@@ -30,109 +30,84 @@ function normalizeRobinhoodPayload(payload) {
   })).filter((token) => token.address);
 }
 
-async function getSolanaTokens() {
+async function getLatestProfiles() {
   const response = await fetch(`${DEX}/token-profiles/latest/v1`);
-  if (!response.ok) throw new Error(`DEX Screener returned ${response.status}`);
-
+  if (!response.ok) throw new Error(`DEX Screener profiles returned ${response.status}`);
   const profiles = await response.json();
-  const solanaProfiles = (Array.isArray(profiles) ? profiles : [])
-    .filter((token) => token.chainId === "solana" && token.tokenAddress)
-    .slice(0, 40);
-
-  const results = await Promise.all(solanaProfiles.map(async (token) => {
-    try {
-      const r = await fetch(`${DEX}/token-pairs/v1/solana/${encodeURIComponent(token.tokenAddress)}`);
-      if (!r.ok) return null;
-      const pairs = await r.json();
-      if (!Array.isArray(pairs) || !pairs.length) return null;
-
-      const pair = pairs
-        .filter((p) => Number(p.priceUsd) > 0)
-        .sort((a, b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0))[0];
-
-      if (!pair) return null;
-
-      return {
-        id: pair.pairAddress || token.tokenAddress,
-        chain: "sol",
-        address: token.tokenAddress,
-        name: pair.baseToken?.name || "Unknown",
-        symbol: pair.baseToken?.symbol || "???",
-        price: Number(pair.priceUsd || 0),
-        marketCap: Number(pair.marketCap || pair.fdv || 0),
-        liquidity: Number(pair.liquidity?.usd || 0),
-        volume1h: Number(pair.volume?.h1 || 0),
-        volume24h: Number(pair.volume?.h24 || 0),
-        change24h: Number(pair.priceChange?.h24 || 0),
-        pairAddress: pair.pairAddress || null,
-        pairUrl: pair.url || token.url || null,
-        logo: pair.info?.imageUrl || token.icon || null,
-        createdAt: pair.pairCreatedAt || null,
-        priceHistory: []
-      };
-    } catch (error) {
-      console.error("Pair lookup failed:", error?.message || error);
-      return null;
-    }
-  }));
-
-  return results.filter(Boolean);
+  return Array.isArray(profiles) ? profiles : [];
 }
 
-async function getRobinhoodTokens() {
-  // Use DexScreener's real Robinhood Chain market data directly, rather than
-  // requiring an undocumented custom feed URL in Vercel.
-  const response = await fetch(`${DEX}/token-profiles/latest/v1`);
-  if (!response.ok) throw new Error(`DexScreener profiles returned ${response.status}`);
+// DexScreener supports up to 30 token addresses per request. Batch them rather
+// than issuing one request per coin; this avoids rate-limit pressure on refresh.
+async function getTokenPairs(chainId, addresses) {
+  const unique = [...new Set(addresses.filter(Boolean))];
+  const chunks = [];
+  for (let i = 0; i < unique.length; i += 30) chunks.push(unique.slice(i, i + 30));
 
-  const profiles = await response.json();
-  const robinhoodProfiles = (Array.isArray(profiles) ? profiles : [])
-    .filter((token) => token.chainId === "robinhood" && token.tokenAddress)
-    .slice(0, 40);
-
-  const results = await Promise.all(robinhoodProfiles.map(async (token) => {
+  const batches = await Promise.all(chunks.map(async (chunk) => {
     try {
-      const r = await fetch(`${DEX}/token-pairs/v1/robinhood/${encodeURIComponent(token.tokenAddress)}`);
-      if (!r.ok) return null;
-      const pairs = await r.json();
-      if (!Array.isArray(pairs) || !pairs.length) return null;
-
-      // Only use a market where the profile's contract is the base token,
-      // so the returned price and symbol refer to the same asset.
-      const pair = pairs
-        .filter((p) =>
-          String(p.baseToken?.address || "").toLowerCase() === String(token.tokenAddress).toLowerCase()
-          && Number(p.priceUsd) > 0
-        )
-        .sort((a, b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0))[0];
-
-      if (!pair) return null;
-
-      return {
-        id: pair.pairAddress || token.tokenAddress,
-        chain: "robinhood",
-        address: token.tokenAddress,
-        name: pair.baseToken?.name || "Unknown",
-        symbol: pair.baseToken?.symbol || "???",
-        price: Number(pair.priceUsd || 0),
-        marketCap: Number(pair.marketCap || pair.fdv || 0),
-        liquidity: Number(pair.liquidity?.usd || 0),
-        volume1h: Number(pair.volume?.h1 || 0),
-        volume24h: Number(pair.volume?.h24 || 0),
-        change24h: Number(pair.priceChange?.h24 || 0),
-        pairAddress: pair.pairAddress || null,
-        pairUrl: pair.url || token.url || null,
-        logo: pair.info?.imageUrl || token.icon || null,
-        createdAt: pair.pairCreatedAt || null,
-        priceHistory: []
-      };
+      const url = `${DEX}/tokens/v1/${chainId}/${chunk.map(encodeURIComponent).join(",")}`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        console.warn(`DexScreener batch lookup failed (${chainId}): ${response.status}`);
+        return [];
+      }
+      const pairs = await response.json();
+      return Array.isArray(pairs) ? pairs : [];
     } catch (error) {
-      console.error("Robinhood pair lookup failed:", error?.message || error);
-      return null;
+      console.warn(`DexScreener batch lookup error (${chainId}):`, error?.message || error);
+      return [];
     }
   }));
+  return batches.flat();
+}
 
-  return results.filter(Boolean);
+function bestPairForToken(pairs, address) {
+  const key = String(address || "").toLowerCase();
+  return pairs
+    .filter((pair) =>
+      String(pair.baseToken?.address || "").toLowerCase() === key
+      && Number(pair.priceUsd) > 0
+    )
+    .sort((a, b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0))[0] || null;
+}
+
+function toMarketToken(profile, pair, chain) {
+  if (!pair) return null;
+  return {
+    id: pair.pairAddress || profile.tokenAddress,
+    chain,
+    address: profile.tokenAddress,
+    name: pair.baseToken?.name || "Unknown",
+    symbol: pair.baseToken?.symbol || "???",
+    price: Number(pair.priceUsd || 0),
+    marketCap: Number(pair.marketCap || pair.fdv || 0),
+    liquidity: Number(pair.liquidity?.usd || 0),
+    volume1h: Number(pair.volume?.h1 || 0),
+    volume24h: Number(pair.volume?.h24 || 0),
+    change24h: Number(pair.priceChange?.h24 || 0),
+    pairAddress: pair.pairAddress || null,
+    pairUrl: pair.url || profile.url || null,
+    logo: pair.info?.imageUrl || profile.icon || null,
+    createdAt: pair.pairCreatedAt || null,
+    priceHistory: []
+  };
+}
+
+async function getSolanaTokens(profiles) {
+  const selected = profiles
+    .filter((token) => token.chainId === "solana" && token.tokenAddress)
+    .slice(0, 80);
+  const pairs = await getTokenPairs("solana", selected.map((token) => token.tokenAddress));
+  return selected.map((profile) => toMarketToken(profile, bestPairForToken(pairs, profile.tokenAddress), "sol")).filter(Boolean);
+}
+
+async function getRobinhoodTokens(profiles) {
+  const selected = profiles
+    .filter((token) => token.chainId === "robinhood" && token.tokenAddress)
+    .slice(0, 80);
+  const pairs = await getTokenPairs("robinhood", selected.map((token) => token.tokenAddress));
+  return selected.map((profile) => toMarketToken(profile, bestPairForToken(pairs, profile.tokenAddress), "robinhood")).filter(Boolean);
 }
 
 export default async function handler(req, res) {
@@ -152,9 +127,10 @@ export default async function handler(req, res) {
   }
 
   try {
+    const profiles = await getLatestProfiles();
     const [solanaResult, robinhoodResult] = await Promise.allSettled([
-      chain === "robinhood" ? Promise.resolve([]) : getSolanaTokens(),
-      chain === "sol" ? Promise.resolve([]) : getRobinhoodTokens()
+      chain === "robinhood" ? Promise.resolve([]) : getSolanaTokens(profiles),
+      chain === "sol" ? Promise.resolve([]) : getRobinhoodTokens(profiles)
     ]);
 
     const tokens = [

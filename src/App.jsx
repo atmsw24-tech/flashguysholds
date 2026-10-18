@@ -750,7 +750,7 @@ export default function App() {
           </button>
         </nav>
         <button className="account-open-button" onClick={() => setAccountOpen(true)}>
-          <span className="account-open-icon">↗</span> Account / Connect Wallet
+          <span className="account-open-icon" aria-hidden="true">↗</span><span className="account-open-label">Account / Connect Wallet</span>
         </button>
       </header>
 

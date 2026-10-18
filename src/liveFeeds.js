@@ -409,59 +409,36 @@ async function enrichToken(event) {
     }
   }
 
-  const uri =
-    clean(event?.uri) ||
-    clean(finalTokenInfo?.uri) ||
-    clean(finalMetadata?.uri);
-
-  let offchain = null;
-
-  if (uri) {
-    offchain =
-      await getOffchainMetadata(uri);
-  }
-
-  let token =
-    createToken({
-      event,
-      metadata: finalMetadata,
-      tokenInfo: finalTokenInfo,
-      offchain
-    });
+  // Build the trading-data row before requesting optional off-chain
+  // image/social metadata. A slow IPFS gateway must not delay live price data.
+  let token = createToken({
+    event,
+    metadata: finalMetadata,
+    tokenInfo: finalTokenInfo,
+    offchain: null
+  });
 
   /*
-   * Sometimes metadata arrives shortly after
-   * the launch event. Give it another chance.
+   * Sometimes metadata arrives shortly after the launch event. Give it another
+   * chance, but do not block the first usable token on optional image metadata.
    */
-
   if (!token) {
     await sleep(1000);
 
-    const retryMetadata =
-      await getMetadata(mint);
+    const [retryMetadata, retryTokenInfo] = await Promise.all([
+      getMetadata(mint),
+      getTokenInfo(mint)
+    ]);
 
-    const retryTokenInfo =
-      await getTokenInfo(mint);
+    token = createToken({
+      event,
+      metadata: retryMetadata,
+      tokenInfo: retryTokenInfo,
+      offchain: null
+    });
 
-    const retryUri =
-      clean(event?.uri) ||
-      clean(retryTokenInfo?.uri) ||
-      clean(retryMetadata?.uri);
-
-    let retryOffchain = null;
-
-    if (retryUri) {
-      retryOffchain =
-        await getOffchainMetadata(retryUri);
-    }
-
-    token =
-      createToken({
-        event,
-        metadata: retryMetadata,
-        tokenInfo: retryTokenInfo,
-        offchain: retryOffchain
-      });
+    finalMetadata = retryMetadata || finalMetadata;
+    finalTokenInfo = retryTokenInfo || finalTokenInfo;
   }
 
   if (!token) {
@@ -479,6 +456,29 @@ async function enrichToken(event) {
     `$${token.symbol}`,
     token.address
   );
+
+  // Enrich optional presentation metadata in the background. The caller can
+  // publish the real token and market fields without waiting for IPFS/HTTP.
+  const uri = clean(event?.uri) || clean(finalTokenInfo?.uri) || clean(finalMetadata?.uri);
+  if (uri) {
+    getOffchainMetadata(uri).then((offchain) => {
+      if (!offchain || typeof window === "undefined") return;
+      window.dispatchEvent(new CustomEvent("flashguys:solana-token", {
+        detail: {
+          id: token.id,
+          chain: token.chain,
+          address: token.address,
+          mint: token.mint,
+          image: offchain.image || null,
+          description: offchain.description || "",
+          website: offchain.website || "",
+          twitter: offchain.twitter || "",
+          telegram: offchain.telegram || "",
+          metadataPatch: true
+        }
+      }));
+    }).catch(() => {});
+  }
 
   return token;
 }

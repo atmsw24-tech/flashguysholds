@@ -22,6 +22,7 @@ let socket = null;
 
 const enrichmentQueue = [];
 const queuedMints = new Set();
+const activeMints = new Set();
 const processedMints = new Set();
 const subscribedMints = new Set();
 const requestedMints = new Set();
@@ -543,51 +544,48 @@ function queueToken(event) {
     }
   }
 
-  if (queuedMints.has(mint)) {
+  // Avoid duplicate queue entries while a mint is queued, enriching, or complete.
+  if (queuedMints.has(mint) || activeMints.has(mint) || processedMints.has(mint)) {
     return;
   }
 
-  if (processedMints.has(mint)) {
-    return;
-  }
-
-  // Show a newly detected launch immediately when the socket event already
-  // contains a usable name and symbol. Enrichment fills in market data later.
+  // Put every genuine mint from the live launch stream on screen immediately.
+  // If name/symbol are not available yet, label them as pending rather than
+  // inventing token details. Enrichment replaces this provisional row later.
   const eventName = clean(event?.name);
   const eventSymbol = clean(event?.symbol);
-  if (validNameAndSymbol(eventName, eventSymbol)) {
-    const timestamp = Number(event?.timestamp) || Math.floor(Date.now() / 1000);
-    const price = toNumber(event?.priceUSD) || toNumber(event?.price);
-    window.dispatchEvent(new CustomEvent("flashguys:solana-token", {
-      detail: {
-        id: `solana-${mint}`,
-        chain: "solana",
-        name: eventName,
-        symbol: eventSymbol,
-        address: mint,
-        mint,
-        price,
-        marketCap: toNumber(event?.marketCapUSD) || toNumber(event?.marketCap),
-        liquidity: toNumber(event?.liquidityUSD) || toNumber(event?.liquidity),
-        volume24h: toNumber(event?.volume24h),
-        volume1h: toNumber(event?.volume1h),
-        change24h: toNumber(event?.change24h),
-        timestamp,
-        createdAt: timestamp * 1000,
-        image: clean(event?.image) || clean(event?.logo) || null,
-        protocol: clean(event?.protocol),
-        source: "Shrine",
-        live: true,
-        provisional: true
-      }
-    }));
-  }
+  const timestamp = Number(event?.timestamp) || Math.floor(Date.now() / 1000);
+  const price = toNumber(event?.priceUSD) || toNumber(event?.price);
+  window.dispatchEvent(new CustomEvent("flashguys:solana-token", {
+    detail: {
+      id: `solana-${mint}`,
+      chain: "solana",
+      name: validNameAndSymbol(eventName, eventSymbol) ? eventName : "Fetching metadata…",
+      symbol: validNameAndSymbol(eventName, eventSymbol) ? eventSymbol : "—",
+      address: mint,
+      mint,
+      price,
+      marketCap: toNumber(event?.marketCapUSD) || toNumber(event?.marketCap),
+      liquidity: toNumber(event?.liquidityUSD) || toNumber(event?.liquidity),
+      volume24h: toNumber(event?.volume24h),
+      volume1h: toNumber(event?.volume1h),
+      change24h: toNumber(event?.change24h),
+      timestamp,
+      createdAt: timestamp * 1000,
+      image: clean(event?.image) || clean(event?.logo) || null,
+      protocol: clean(event?.protocol),
+      source: "Shrine",
+      live: true,
+      provisional: true,
+      metadataPending: !validNameAndSymbol(eventName, eventSymbol)
+    }
+  }));
 
-  if (
-    enrichmentQueue.length >=
-    MAX_QUEUE_SIZE
-  ) {
-    enrichmentQueue.shift();
+  if (enrichmentQueue.length >= MAX_QUEUE_SIZE) {
+    // If a burst exceeds the buffer, release the dropped mint's dedupe lock
+    // so a later live event can retry it instead of leaving it stuck forever.
+    const dropped = enrichmentQueue.shift();
+    if (dropped?.mint) queuedMints.delete(dropped.mint);
   }
 
   queuedMints.add(mint);
@@ -615,6 +613,7 @@ function processQueue() {
 
     const { mint, event } = item;
     queuedMints.delete(mint);
+    activeMints.add(mint);
     activeEnrichmentWorkers += 1;
 
     enrichToken(event)
@@ -632,6 +631,7 @@ function processQueue() {
         console.error("FLASHGUYS token enrichment error:", error);
       })
       .finally(() => {
+        activeMints.delete(mint);
         activeEnrichmentWorkers = Math.max(0, activeEnrichmentWorkers - 1);
         processQueue();
       });
@@ -840,6 +840,7 @@ function startSolanaSocket({
 
     enrichmentQueue.length = 0;
     queuedMints.clear();
+    activeMints.clear();
 
     if (socket) {
       socket.disconnect();

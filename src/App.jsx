@@ -440,7 +440,7 @@ function TokenModal({ token, onClose }) {
 function LaunchPage() {
   return (
     <div className="launch-page">
-      <h1>Launch a Token</h1>
+      <h1>Launch on FLASHBOYS</h1>
 
       <p>
         Choose a launch ecosystem for your
@@ -749,7 +749,7 @@ export default function App() {
             Launch
           </button>
         </nav>
-        <button type="button" className="flashboys-launch-cta" onClick={() => setPage("launch")} aria-label="Open Flashboys token launch options"><span className="flashboys-launch-bolt" aria-hidden="true">⚡</span><span>Launch on Flashboys</span></button>
+        <button type="button" className="flashboys-launch-cta" onClick={() => setPage("launch")} aria-label="Open FLASHBOYS token launch options"><span className="flashboys-launch-bolt" aria-hidden="true">⚡</span><span>Launch FLASHBOYS</span></button>
         <button className="account-open-button" onClick={() => setAccountOpen(true)}>
           <span className="account-open-icon" aria-hidden="true">↗</span><span className="account-open-label">Account / Connect Wallet</span>
         </button>
@@ -913,7 +913,7 @@ export default function App() {
       </main>
 
       <footer className="footer">
-        FLASHGUYS — Independent crypto
+        FLASHBOYS — Independent crypto
         discovery platform.
       </footer>
 

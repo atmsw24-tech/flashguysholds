@@ -13,7 +13,8 @@ const SOLANA_PROTOCOLS = [
   "STONKFUN"
 ];
 
-const MAX_QUEUE_SIZE = 500;
+// Buffer bursts of real launch events so enrichment delays do not drop the feed.
+const MAX_QUEUE_SIZE = 5000;
 const ENRICH_DELAY_MS = 350;
 
 let stopped = false;
@@ -27,7 +28,8 @@ const requestedMints = new Set();
 const observedLaunchMints = new Set();
 
 let activeEnrichmentWorkers = 0;
-const MAX_ENRICHMENT_WORKERS = 8;
+// Process multiple real launches in parallel; upstream provider limits still apply.
+const MAX_ENRICHMENT_WORKERS = 20;
 
 function clean(value) {
   if (value === undefined || value === null) {

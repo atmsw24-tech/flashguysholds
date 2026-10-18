@@ -28,7 +28,7 @@ async function authRequest(path, body, accessToken) {
 }
 
 export default function AccountPanel({ onClose }) {
-  const [mode, setMode] = useState("signup");
+  const [mode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -165,7 +165,7 @@ export default function AccountPanel({ onClose }) {
       <section className="account-panel" role="dialog" aria-modal="true" aria-label="FLASHGUYS account" onClick={(event) => event.stopPropagation()}>
         <button className="account-close" onClick={onClose} aria-label="Close account panel">×</button>
         <div className="account-brand">FLASHGUYS <span>ACCOUNT</span></div>
-        <h2>{session?.user?.email ? "Your account" : mode === "signup" ? "Create your account" : "Welcome back"}</h2>
+        <h2>{session?.user?.email ? "Your account" : "Sign in"}</h2>
         <p className="account-subtitle">Manage your profile and connect your crypto wallet.</p>
 
         {session?.user?.email ? (
@@ -180,10 +180,7 @@ export default function AccountPanel({ onClose }) {
             <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
             <label>Password</label>
             <input type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} minLength={6} required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 6 characters" />
-            <button className="account-primary" disabled={busy}>{busy ? "Please wait..." : mode === "signup" ? "Create account" : "Sign in"}</button>
-            <button type="button" className="account-text-button" onClick={() => { setMode(mode === "signup" ? "login" : "signup"); setMessage(""); }}>
-              {mode === "signup" ? "Already have an account? Sign in" : "New to FLASHGUYS? Create account"}
-            </button>
+            <button className="account-primary" disabled={busy}>{busy ? "Please wait..." : "Sign in"}</button>
           </form>
         )}
 

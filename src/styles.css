@@ -966,3 +966,12 @@ a {
   .flashboys-launch-cta, .launch-option, .launch-button { transition: none; }
   .launch-option:hover, .launch-button:hover, .flashboys-launch-cta:hover { transform: none; }
 }
+
+
+/* Make the ecosystem choices genuine, keyboard-accessible actions. */
+.account-ecosystems { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 12px 0 18px; }
+.account-ecosystem { display: flex; align-items: center; justify-content: center; min-height: 48px; padding: 10px 12px; border: 1px solid rgba(255,255,255,.14); border-radius: 11px; background: #121822; color: #f5f7fa; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; pointer-events: auto; position: relative; z-index: 1; }
+.account-ecosystem:hover, .account-ecosystem:focus-visible { border-color: #c9ff39; background: #19212a; outline: 2px solid rgba(201,255,57,.35); outline-offset: 2px; }
+.robinhood-ecosystem { color: #d9ff78; border-color: rgba(201,255,57,.35); }
+.solana-ecosystem { color: #c59cff; border-color: rgba(153,69,255,.35); }
+@media (max-width: 420px) { .account-ecosystems { grid-template-columns: minmax(0, 1fr); } }

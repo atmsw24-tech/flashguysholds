@@ -63,35 +63,46 @@ async function getTokenPairs(chainId, addresses) {
 }
 
 // Holder counts are only shown when returned by an indexed data provider.
-// Birdeye exposes total holder counts for Solana tokens; a plain RPC balance
-// query cannot reliably provide a total count without indexing every account.
-async function getSolanaHolderCount(address) {
+// Birdeye's holder-profile endpoint returns holder summary data for Solana.
+async function getHolderCount(token) {
   const apiKey = process.env.BIRDEYE_API_KEY;
-  if (!apiKey || !address) return null;
+  if (!apiKey || !token?.address) return null;
+  const isSolana = token.chain === "sol";
+  const url = isSolana
+    ? `https://public-api.birdeye.so/token/v1/holder-profile?token_address=${encodeURIComponent(token.address)}&include_zero_balance=false`
+    : `https://public-api.birdeye.so/defi/token_overview?address=${encodeURIComponent(token.address)}`;
   try {
-    const url = `https://public-api.birdeye.so/defi/v3/token/holder?address=${encodeURIComponent(address)}&offset=0&limit=1`;
     const response = await fetch(url, {
-      headers: { accept: "application/json", "X-API-KEY": apiKey, "x-chain": "solana" }
+      headers: {
+        accept: "application/json",
+        "X-API-KEY": apiKey,
+        "x-chain": isSolana ? "solana" : "robinhood"
+      }
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.warn(`Birdeye holder lookup failed (${token.chain}): ${response.status}`);
+      return null;
+    }
     const payload = await response.json();
-    const total = payload?.data?.total ?? payload?.data?.totalHolders ?? payload?.data?.holderCount;
-    return Number.isFinite(Number(total)) && total !== null ? Number(total) : null;
+    const data = payload?.data;
+    const candidates = [data?.holder_count, data?.holderCount, data?.total_holders, data?.totalHolders, data?.holders, data?.holder];
+    const value = candidates.find((item) => item !== null && item !== undefined && item !== "" && Number.isFinite(Number(item)));
+    return value === undefined ? null : Number(value);
   } catch (error) {
-    console.warn("Solana holder lookup failed:", error?.message || error);
+    console.warn(`Birdeye holder lookup failed (${token.chain}):`, error?.message || error);
     return null;
   }
 }
 
 async function addHolderCounts(tokens) {
-  // Keep optional holder lookups bounded so one feed refresh cannot fan out
-  // into hundreds of paid provider calls. Missing counts remain null, not zero.
-  const solana = tokens.filter((token) => token.chain === "sol").slice(0, 20);
+  // Limit per-refresh enrichment to avoid an unbounded number of provider calls.
+  // Missing counts remain null; never represent missing data as zero.
+  const candidates = tokens.filter((token) => token.chain === "sol" || token.chain === "robinhood").slice(0, 20);
   let cursor = 0;
-  const workers = Array.from({ length: Math.min(4, solana.length) }, async () => {
-    while (cursor < solana.length) {
-      const token = solana[cursor++];
-      token.holders = await getSolanaHolderCount(token.address);
+  const workers = Array.from({ length: Math.min(4, candidates.length) }, async () => {
+    while (cursor < candidates.length) {
+      const token = candidates[cursor++];
+      token.holders = await getHolderCount(token);
     }
   });
   await Promise.all(workers);

@@ -1,1 +1,44 @@
-<!doctype html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><title>FLASHGUYS</title></head><body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body></html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#07090d" />
+    <title>FLASHGUYS</title>
+    <style>
+      #flashguys-boot {
+        position: fixed; inset: 0; z-index: 99999; display: flex;
+        align-items: center; justify-content: center; padding: 24px;
+        background: radial-gradient(circle at 50% 35%, rgba(201,255,57,.08), transparent 34%), #07090d;
+        color: #f5f7fa; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        opacity: 1; visibility: visible; transition: opacity .35s ease, visibility .35s ease;
+      }
+      #flashguys-boot.boot-hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+      .fg-boot-card { width: min(390px, 100%); padding: 34px 26px; text-align: center; border: 1px solid rgba(201,255,57,.22); border-radius: 22px; background: rgba(13,17,24,.96); box-shadow: 0 24px 90px rgba(0,0,0,.55); }
+      .fg-boot-mark { width: 58px; height: 58px; display: grid; place-items: center; margin: 0 auto 18px; border-radius: 17px; background: #c9ff39; color: #101407; font-size: 32px; font-weight: 1000; box-shadow: 0 0 35px rgba(201,255,57,.18); }
+      .fg-boot-title { margin: 0; font-size: 24px; font-weight: 900; letter-spacing: .04em; }
+      .fg-boot-title span { color: #c9ff39; }
+      .fg-boot-subtitle { margin: 12px 0 24px; color: #929cad; font-size: 13px; }
+      .fg-boot-track { height: 5px; overflow: hidden; border-radius: 99px; background: #252c37; }
+      .fg-boot-bar { width: 38%; height: 100%; border-radius: inherit; background: #c9ff39; animation: fg-boot-progress 1.25s ease-in-out infinite alternate; }
+      .fg-boot-status { margin-top: 14px; color: #c9ff39; font-size: 10px; font-weight: 800; letter-spacing: .16em; }
+      .fg-boot-chains { margin-top: 9px; color: #687282; font-size: 11px; }
+      @keyframes fg-boot-progress { from { transform: translateX(-35%); } to { transform: translateX(210%); } }
+      @media (prefers-reduced-motion: reduce) { .fg-boot-bar { animation: none; width: 100%; } #flashguys-boot { transition: none; } }
+    </style>
+  </head>
+  <body>
+    <div id="flashguys-boot" role="status" aria-live="polite">
+      <div class="fg-boot-card">
+        <div class="fg-boot-mark" aria-hidden="true">ϟ</div>
+        <h1 class="fg-boot-title">FLASH<span>GUYS</span></h1>
+        <p class="fg-boot-subtitle">Initializing your live market dashboard…</p>
+        <div class="fg-boot-track"><div class="fg-boot-bar"></div></div>
+        <div class="fg-boot-status">CONNECTING TO MARKET DATA</div>
+        <div class="fg-boot-chains">Solana · Robinhood Chain</div>
+      </div>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

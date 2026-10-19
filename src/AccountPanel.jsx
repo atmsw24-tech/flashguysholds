@@ -157,18 +157,52 @@ export default function AccountPanel({ onClose }) {
         const accounts = await provider.request({ method: "eth_requestAccounts" });
         address = accounts?.[0] || "";
         if (!address) throw new Error("Wallet did not return a public address.");
-        const chainId = await provider.request({ method: "eth_chainId" });
+        // Robinhood Chain mainnet: chain ID 4663 (0x1237).
+        // Request a network switch; if the wallet has not added it, request that it be added.
+        let chainId = String(await provider.request({ method: "eth_chainId" }) || "").toLowerCase();
+        const robinhoodChain = {
+          chainId: "0x1237",
+          chainName: "Robinhood Chain",
+          nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+          rpcUrls: ["https://rpc.mainnet.chain.robinhood.com"],
+          blockExplorerUrls: ["https://robinhoodchain.blockscout.com"]
+        };
+        if (chainId !== robinhoodChain.chainId) {
+          try {
+            await provider.request({
+              method: "wallet_switchEthereumChain",
+              params: [{ chainId: robinhoodChain.chainId }]
+            });
+          } catch (switchError) {
+            if (switchError?.code === 4902) {
+              await provider.request({
+                method: "wallet_addEthereumChain",
+                params: [robinhoodChain]
+              });
+              await provider.request({
+                method: "wallet_switchEthereumChain",
+                params: [{ chainId: robinhoodChain.chainId }]
+              });
+            } else {
+              throw new Error("Wallet connected, but Robinhood Chain was not selected. Approve the network switch to continue.");
+            }
+          }
+          chainId = String(await provider.request({ method: "eth_chainId" }) || "").toLowerCase();
+        }
+        if (chainId !== robinhoodChain.chainId) {
+          throw new Error("Wallet did not switch to Robinhood Chain (chain ID 4663). Check the selected network in your wallet.");
+        }
         const connected = {
           chain: kind,
           walletName: provider.isMetaMask ? "MetaMask" : "EVM wallet",
           address,
-          chainId: String(chainId || ""),
+          chainId,
           connectedAt: new Date().toISOString()
         };
         localStorage.setItem(WALLET_KEY, JSON.stringify(connected));
         setWallet(connected);
         window.dispatchEvent(new Event("flashguys:wallet"));
-        setMessage(`${connected.walletName} connected. Confirm the network before using chain-specific features. No transaction was sent.`);
+        setMessage(`${connected.walletName} connected to Robinhood Chain (4663). No transaction was sent.`);
       }
     } catch (error) {
       setMessage(error?.message || "Wallet connection was cancelled or failed.");

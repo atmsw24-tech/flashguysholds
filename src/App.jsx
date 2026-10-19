@@ -183,7 +183,7 @@ function TokenRow({ token, onClick }) {
 
       <td>{formatNumber(token.volume1h)}</td>
 
-      <td>{Number(token.holders || 0).toLocaleString()}</td>
+      <td>{Number.isFinite(Number(token.holders)) && token.holders !== null && token.holders !== undefined ? Number(token.holders).toLocaleString() : "Unavailable"}</td>
 
       <td
         style={{

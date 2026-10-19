@@ -253,7 +253,7 @@ export default function AccountPanel({ onClose }) {
         )}
 
         <div className="account-divider"><span>CHOOSE YOUR ECOSYSTEM</span></div>
-        <div className="account-ecosystems" aria-label="Supported ecosystems"><span className="account-ecosystem solana-ecosystem">Solana</span><span className="account-ecosystem robinhood-ecosystem">Robinhood Chain</span></div>
+        <div className="account-ecosystems" aria-label="Choose a blockchain"><button type="button" className="account-ecosystem solana-ecosystem" onClick={() => connectWallet("solana")}>Connect Solana</button><button type="button" className="account-ecosystem robinhood-ecosystem" onClick={() => connectWallet("evm")}>Connect Robinhood Chain</button></div>
         {wallet ? (
           <div className="wallet-connected">
             <div className="wallet-dot" />
@@ -266,7 +266,7 @@ export default function AccountPanel({ onClose }) {
             <button type="button" className="wallet-button" onClick={() => connectWallet("evm")}><span className="wallet-symbol evm-symbol">◇</span><span><strong>Robinhood Chain</strong><small>Connect MetaMask or a compatible EVM wallet</small></span><b>Connect</b></button>
           </div>
         )}
-        <p className="account-safety">FLASHGUYS never asks for your seed phrase or private key. Connecting a wallet does not send a transaction. The Robinhood Chain option connects an EVM wallet but does not automatically switch networks; verify your wallet network before using chain-specific features.</p>
+        <p className="account-safety">FLASHGUYS never asks for your seed phrase or private key. Connecting a wallet does not send a transaction. The Robinhood Chain button requests an EVM wallet and verifies chain ID 4663 before reporting a successful connection.</p>
         {message ? <div className="account-message" role="status">{message}</div> : null}
       </section>
     </div>

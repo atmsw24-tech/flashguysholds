@@ -62,6 +62,42 @@ async function getTokenPairs(chainId, addresses) {
   return batches.flat();
 }
 
+// Holder counts are only shown when returned by an indexed data provider.
+// Birdeye exposes total holder counts for Solana tokens; a plain RPC balance
+// query cannot reliably provide a total count without indexing every account.
+async function getSolanaHolderCount(address) {
+  const apiKey = process.env.BIRDEYE_API_KEY;
+  if (!apiKey || !address) return null;
+  try {
+    const url = `https://public-api.birdeye.so/defi/v3/token/holder?address=${encodeURIComponent(address)}&offset=0&limit=1`;
+    const response = await fetch(url, {
+      headers: { accept: "application/json", "X-API-KEY": apiKey, "x-chain": "solana" }
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const total = payload?.data?.total ?? payload?.data?.totalHolders ?? payload?.data?.holderCount;
+    return Number.isFinite(Number(total)) && total !== null ? Number(total) : null;
+  } catch (error) {
+    console.warn("Solana holder lookup failed:", error?.message || error);
+    return null;
+  }
+}
+
+async function addHolderCounts(tokens) {
+  // Keep optional holder lookups bounded so one feed refresh cannot fan out
+  // into hundreds of paid provider calls. Missing counts remain null, not zero.
+  const solana = tokens.filter((token) => token.chain === "sol").slice(0, 20);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(4, solana.length) }, async () => {
+    while (cursor < solana.length) {
+      const token = solana[cursor++];
+      token.holders = await getSolanaHolderCount(token.address);
+    }
+  });
+  await Promise.all(workers);
+  return tokens;
+}
+
 function bestPairForToken(pairs, address) {
   const key = String(address || "").toLowerCase();
   return pairs
@@ -133,10 +169,10 @@ export default async function handler(req, res) {
       chain === "sol" ? Promise.resolve([]) : getRobinhoodTokens(profiles)
     ]);
 
-    const tokens = [
+    const tokens = await addHolderCounts([
       ...(solanaResult.status === "fulfilled" ? solanaResult.value : []),
       ...(robinhoodResult.status === "fulfilled" ? robinhoodResult.value : [])
-    ];
+    ]);
 
     const errors = [];
     if (solanaResult.status === "rejected") errors.push("Solana feed temporarily unavailable");

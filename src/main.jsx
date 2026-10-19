@@ -8,3 +8,13 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     <App />
   </React.StrictMode>
 );
+
+// The boot screen is plain HTML so it appears before React has loaded.
+// Remove it after the app has had a moment to mount, even if a market API is slow.
+window.setTimeout(() => {
+  const boot = document.getElementById("flashguys-boot");
+  if (boot) {
+    boot.classList.add("boot-hidden");
+    window.setTimeout(() => boot.remove(), 400);
+  }
+}, 1600);

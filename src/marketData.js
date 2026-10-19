@@ -65,10 +65,10 @@ function normalizeToken(token) {
       0
     ),
 
-    holders: Number(
-      token.holders ??
-      0
-    ),
+    // null means the provider did not supply a verified holder count.
+    holders: token.holders === null || token.holders === undefined || token.holders === ""
+      ? null
+      : Number(token.holders),
   };
 }
 

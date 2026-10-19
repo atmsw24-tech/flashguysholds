@@ -512,7 +512,13 @@ export default function App() {
   const [liveLaunchCount, setLiveLaunchCount] = useState(0);
   const seenLiveLaunches = useRef(new Set());
 
-  const [accountOpen, setAccountOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(() => {
+    try {
+      return !localStorage.getItem("flashguys.auth.session");
+    } catch {
+      return true;
+    }
+  });
 
   // Count unique launch events from the live feed during this browser session.
   useEffect(() => {

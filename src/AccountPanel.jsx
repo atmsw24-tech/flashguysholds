@@ -218,7 +218,8 @@ export default function AccountPanel({ onClose }) {
           </form>
         )}
 
-        <div className="account-divider"><span>CONNECT A WALLET</span></div>
+        <div className="account-divider"><span>CHOOSE YOUR ECOSYSTEM</span></div>
+        <div className="account-ecosystems" aria-label="Supported ecosystems"><span className="account-ecosystem solana-ecosystem">Solana</span><span className="account-ecosystem robinhood-ecosystem">Robinhood Chain</span></div>
         {wallet ? (
           <div className="wallet-connected">
             <div className="wallet-dot" />
@@ -227,11 +228,11 @@ export default function AccountPanel({ onClose }) {
           </div>
         ) : (
           <div className="wallet-buttons">
-            <button type="button" className="wallet-button" onClick={() => connectWallet("solana")}><span className="wallet-symbol solana-symbol">S</span><span><strong>Solana wallet</strong><small>Phantom or Solflare</small></span><b>Connect</b></button>
-            <button type="button" className="wallet-button" onClick={() => connectWallet("evm")}><span className="wallet-symbol evm-symbol">◇</span><span><strong>EVM wallet</strong><small>MetaMask or compatible EVM wallet</small></span><b>Connect</b></button>
+            <button type="button" className="wallet-button" onClick={() => connectWallet("solana")}><span className="wallet-symbol solana-symbol">S</span><span><strong>Solana</strong><small>Connect Phantom or Solflare</small></span><b>Connect</b></button>
+            <button type="button" className="wallet-button" onClick={() => connectWallet("evm")}><span className="wallet-symbol evm-symbol">◇</span><span><strong>Robinhood Chain</strong><small>Connect MetaMask or a compatible EVM wallet</small></span><b>Connect</b></button>
           </div>
         )}
-        <p className="account-safety">FLASHGUYS never asks for your seed phrase or private key. Connecting a wallet does not send a transaction. The EVM network ID is shown for verification; network switching and trading are not enabled by this connection button.</p>
+        <p className="account-safety">FLASHGUYS never asks for your seed phrase or private key. Connecting a wallet does not send a transaction. The Robinhood Chain option connects an EVM wallet but does not automatically switch networks; verify your wallet network before using chain-specific features.</p>
         {message ? <div className="account-message" role="status">{message}</div> : null}
       </section>
     </div>

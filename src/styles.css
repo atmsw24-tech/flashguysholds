@@ -992,3 +992,5 @@ a {
 .watch-token:hover,.watch-token.is-watched{border-color:rgba(201,255,57,.35);background:rgba(201,255,57,.09);color:#d9ff78}
 @media(max-width:900px){.flash-pulse-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.pulse-card{padding:14px}.pulse-card>strong{font-size:25px}.pulse-card p{font-size:11px}}
 @media(max-width:600px){.flash-pulse-grid{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:10px;padding:0 0 8px;scroll-snap-type:x mandatory}.pulse-card{flex:0 0 min(78vw,280px);padding:16px;scroll-snap-align:start}.pulse-card-top{margin-bottom:12px}.pulse-card>strong{font-size:28px}}
+
+.pulse-card[role="button"]{cursor:pointer;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease;outline:none}.pulse-card[role="button"]:hover{transform:translateY(-2px);border-color:rgba(201,255,57,.42);box-shadow:0 8px 26px rgba(0,0,0,.18)}.pulse-card[role="button"]:focus-visible{outline:2px solid #c9ff39;outline-offset:3px}.pulse-card[role="button"] .pulse-action{position:relative;z-index:1}

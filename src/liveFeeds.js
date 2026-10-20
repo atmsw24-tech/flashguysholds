@@ -98,10 +98,15 @@ function normalizeIpfs(uri) {
 
   const value = String(uri).trim();
 
-  if (value.startsWith("ipfs://")) {
-    return `https://ipfs.io/ipfs/${value.slice(7)}`;
+  if (value.startsWith("ipfs://ipfs/")) {
+    return `https://cloudflare-ipfs.com/ipfs/${value.slice("ipfs://ipfs/".length)}`;
   }
 
+  if (value.startsWith("ipfs://")) {
+    return `https://cloudflare-ipfs.com/ipfs/${value.slice(7)}`;
+  }
+
+  // Some metadata stores return gateway URLs with an ipfs path; keep them intact.
   return value;
 }
 
@@ -120,11 +125,14 @@ async function getOffchainMetadata(uri) {
     }
 
     return {
-      image:
+      image: normalizeIpfs(
         clean(data.image) ||
+        clean(data.image_url) ||
         clean(data.imageUrl) ||
         clean(data.logo) ||
-        null,
+        clean(data.properties?.files?.[0]?.uri) ||
+        ""
+      ) || null,
 
       description:
         clean(data.description),
@@ -285,9 +293,22 @@ function createToken({
 
     timestamp,
 
-    image:
-      offchain?.image ||
-      null,
+    // Launch events and token metadata providers use several image field names.
+    // Normalize IPFS URIs so browsers can render the image instead of showing a blank logo.
+    image: normalizeIpfs(
+      clean(offchain?.image) ||
+      clean(event?.image) ||
+      clean(event?.imageUrl) ||
+      clean(event?.image_uri) ||
+      clean(event?.logo) ||
+      clean(tokenInfo?.image) ||
+      clean(tokenInfo?.imageUrl) ||
+      clean(tokenInfo?.image_uri) ||
+      clean(metadata?.image) ||
+      clean(metadata?.imageUrl) ||
+      clean(metadata?.image_uri) ||
+      ""
+    ) || null,
 
     description:
       offchain?.description ||

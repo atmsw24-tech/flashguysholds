@@ -181,9 +181,10 @@ function TokenRow({ token, onClick, watched, onToggleWatch }) {
 
       <td>
         {contractAddress ? (
-          <div className="contract-address-cell" title={contractAddress} style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 150 }}>
-            <code style={{ display: "inline-block", maxWidth: 118, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "5px 8px", borderRadius: 7, background: "rgba(234,255,0,0.07)", border: "1px solid rgba(234,255,0,0.18)", color: "#eaff00", fontSize: 11, letterSpacing: "0.02em" }}>{`${contractAddress.slice(0, 6)}…${contractAddress.slice(-6)}`}</code>
-            <button type="button" className="copy-ca-button" onClick={copyContractAddress} aria-label={`Copy full contract address for ${token.symbol || token.name || "token"}`} title="Copy full contract address" style={{ whiteSpace: "nowrap", borderRadius: 7, padding: "5px 8px", fontSize: 11 }}>
+          <div className="contract-address-cell" title={contractAddress} style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 190, flexWrap: "wrap" }}>
+            <span style={{ color: "#9ca3af", fontSize: 10, fontWeight: 800, letterSpacing: "0.09em", textTransform: "uppercase" }}>CA</span>
+            <code style={{ display: "inline-block", maxWidth: 112, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "6px 9px", borderRadius: 8, background: "rgba(234,255,0,0.08)", border: "1px solid rgba(234,255,0,0.22)", color: "#eaff00", fontSize: 11, fontWeight: 700, letterSpacing: "0.025em" }}>{`${contractAddress.slice(0, 6)}…${contractAddress.slice(-6)}`}</code>
+            <button type="button" className="copy-ca-button" onClick={copyContractAddress} aria-label={`Copy full contract address for ${token.symbol || token.name || "token"}`} title="Copy full contract address" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5, whiteSpace: "nowrap", border: copiedCA ? "1px solid rgba(34,197,94,0.45)" : "1px solid rgba(234,255,0,0.3)", background: copiedCA ? "rgba(34,197,94,0.12)" : "rgba(234,255,0,0.1)", color: copiedCA ? "#86efac" : "#eaff00", borderRadius: 8, padding: "6px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer", transition: "all 150ms ease" }}>
               {copiedCA ? "✓ Copied" : "⧉ Copy CA"}
             </button>
           </div>

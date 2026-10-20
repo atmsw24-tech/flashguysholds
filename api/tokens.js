@@ -136,6 +136,18 @@ function toMarketToken(profile, pair, chain) {
     pairAddress: pair.pairAddress || null,
     pairUrl: pair.url || profile.url || null,
     logo: pair.info?.imageUrl || profile.icon || null,
+    description: profile.description || pair.info?.description || null,
+    website: (pair.info?.websites || profile.links || []).find((link) => String(link.type || "").toLowerCase() === "website" || link.url)?.url || null,
+    socials: (pair.info?.socials || profile.links || []).map((link) => ({ type: link.type || link.platform || link.label || "link", url: link.url || (link.handle ? `https://${String(link.platform || link.type || "").toLowerCase()}.com/${link.handle.replace(/^@/, "")}` : null) })).filter((link) => link.url),
+    fdv: Number(pair.fdv || 0),
+    dexId: pair.dexId || null,
+    txns5m: pair.txns?.m5 || null,
+    txns1h: pair.txns?.h1 || null,
+    txns24h: pair.txns?.h24 || null,
+    buys24h: Number(pair.txns?.h24?.buys || 0),
+    sells24h: Number(pair.txns?.h24?.sells || 0),
+    volume24h: Number(pair.volume?.h24 || 0),
+    pairCreatedAt: pair.pairCreatedAt || null,
     createdAt: pair.pairCreatedAt || null,
     priceHistory: []
   };

@@ -458,50 +458,67 @@ function TokenModal({ token, onClose }) {
 }
 
 function LaunchPage() {
+  const [walletStatus, setWalletStatus] = useState("");
+  const [networkBusy, setNetworkBusy] = useState(false);
+
+  async function addRobinhoodNetwork() {
+    const ethereum = window.ethereum;
+    if (!ethereum) {
+      setWalletStatus("Install or open an EVM wallet such as Robinhood Wallet or MetaMask, then try again.");
+      return;
+    }
+    setNetworkBusy(true);
+    setWalletStatus("");
+    try {
+      await ethereum.request({
+        method: "wallet_addEthereumChain",
+        params: [{
+          chainId: "0x1237",
+          chainName: "Robinhood Chain",
+          nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+          rpcUrls: ["https://rpc.mainnet.chain.robinhood.com"],
+          blockExplorerUrls: ["https://robinhoodchain.blockscout.com"]
+        }]
+      });
+      await ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x1237" }] });
+      const accounts = await ethereum.request({ method: "eth_requestAccounts" });
+      setWalletStatus(accounts?.[0] ? "Wallet connected to Robinhood Chain." : "Network added. Connect your wallet to continue.");
+    } catch (error) {
+      setWalletStatus(error?.message || "Could not connect to Robinhood Chain. Check your wallet and try again.");
+    } finally {
+      setNetworkBusy(false);
+    }
+  }
+
   return (
     <div className="launch-page">
       <h1>Launch on FLASHBOYS</h1>
-
-      <p>
-        Choose a launch ecosystem for your
-        project.
-      </p>
-
+      <p>Choose a chain. FLASHBOYS opens the official Solana creation page and helps you connect to Robinhood Chain.</p>
       <div className="launch-options">
         <div className="launch-option">
           <h3>Solana</h3>
-
-          <p>
-            Launch through a supported Solana
-            token launch platform.
-          </p>
-
-          <a
-            className="launch-button"
-            href="https://pump.fun/"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open Pump.fun
+          <p>Create a real token directly on Pump.fun. You will complete the details and approve any transaction in Pump.fun with your own wallet.</p>
+          <a className="launch-button" href="https://pump.fun/create" target="_blank" rel="noreferrer">
+            Create Token on Pump.fun ↗
           </a>
         </div>
-
         <div className="launch-option">
           <h3>Robinhood Chain</h3>
-
-          <p>
-            The in-app Robinhood Chain token-creation flow is not connected yet. We will not pretend a token has been created until a supported launch service is available.
-          </p>
-
-          <button className="launch-button launch-button-disabled" disabled>
-            Creation not connected
+          <p>Connect an EVM wallet to Robinhood Chain. Token creation requires deploying an ERC-20 smart contract and paying network gas in ETH. Test on testnet before using real funds.</p>
+          <button className="launch-button" type="button" onClick={addRobinhoodNetwork} disabled={networkBusy}>
+            {networkBusy ? "Connecting…" : "Connect Wallet to Robinhood Chain"}
           </button>
+          {walletStatus ? <p role="status" style={{ overflowWrap: "anywhere" }}>{walletStatus}</p> : null}
+          <a className="launch-button" href="https://docs.robinhood.com/chain/deploy-smart-contracts/" target="_blank" rel="noreferrer">
+            Open Token Contract Deployment Guide ↗
+          </a>
+          <a href="https://robinhoodchain.blockscout.com/" target="_blank" rel="noreferrer">Open Robinhood Chain Explorer</a>
+          <p style={{ fontSize: 12, opacity: 0.8 }}>The wallet/network connection is wired here. In-app ERC-20 deployment is not yet implemented, so this page will not claim a token was created.</p>
         </div>
       </div>
     </div>
   );
 }
-
 export default function App() {
   const [page, setPage] =
     useState("discover");

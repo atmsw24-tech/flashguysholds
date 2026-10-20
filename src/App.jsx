@@ -95,7 +95,15 @@ function TokenSparkline({ token }) {
     ? token.priceHistory.map((point) => Number(point.price)).filter((price) => Number.isFinite(price) && price > 0).slice(-24)
     : [];
   if (history.length < 2) {
-    return <span className="sparkline-empty" title="Waiting for real price updates">Waiting…</span>;
+    const price = Number(token.price || 0);
+    if (price > 0) {
+      return (
+        <svg className="token-sparkline" viewBox="0 0 96 30" role="img" aria-label={`Latest observed price for ${token.symbol || "token"}; waiting for another price update`}>
+          <circle cx="48" cy="15" r="4" fill="#55d88a" />
+        </svg>
+      );
+    }
+    return <span className="sparkline-empty" title="Waiting for real price data">Waiting…</span>;
   }
   const width = 96;
   const height = 30;
@@ -306,9 +314,27 @@ function PriceChart({ token }) {
     .filter((point) => Number.isFinite(point.price) && point.price > 0);
 
   if (values.length < 2) {
+    const current = Number(livePrice || token?.price || 0);
     return (
-      <div className="chart-empty">
-        {chartLoading ? "Connecting to live market data..." : (chartError || "Waiting for live market updates.")}
+      <div>
+        {current > 0 ? (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", marginBottom: "10px", fontSize: "12px" }}>
+              <strong>Latest observed price: {formatPrice(current)}</strong>
+              <span style={{ color: "#7b8493" }}>Waiting for price history</span>
+            </div>
+            <svg className="chart" viewBox="0 0 700 220" role="img" aria-label="Chart waiting for a second real price point">
+              <circle cx="350" cy="110" r="5" fill="currentColor" />
+            </svg>
+            <div className="chart-empty" style={{ height: "auto", minHeight: 32 }}>
+              {chartError || "The chart will draw as soon as a second real market price is received."}
+            </div>
+          </>
+        ) : (
+          <div className="chart-empty">
+            {chartLoading ? "Connecting to live market data..." : (chartError || "No live price data is available yet.")}
+          </div>
+        )}
       </div>
     );
   }

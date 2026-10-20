@@ -133,6 +133,7 @@ async function addHolderCounts(tokens) {
     while (cursor < candidates.length) {
       const token = candidates[cursor++];
       token.holders = await getHolderCount(token);
+      token.holderSource = token.holders !== null ? "Birdeye indexed data" : null;
     }
   });
   await Promise.all(workers);

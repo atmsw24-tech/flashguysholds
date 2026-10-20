@@ -1035,3 +1035,32 @@ html, body, #root {
   padding: 28px 20px max(35px, env(safe-area-inset-bottom));
   line-height: 1.6;
 }
+
+
+/* FLASHGUYS × FLASHBOYS homepage ecosystem messaging */
+.hero .hero-tagline {
+  margin-top: 18px;
+  color: #d9ff78;
+  font-size: clamp(16px, 2vw, 20px);
+  font-weight: 800;
+  letter-spacing: .01em;
+}
+.hero .hero-description {
+  max-width: 850px;
+  margin-top: 12px;
+  color: #a4adba;
+  font-size: 14px;
+  line-height: 1.8;
+}
+.hero h1 span {
+  background: linear-gradient(90deg, #d9ff78, #c9ff39, #f1ffd0);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+@media (max-width: 700px) {
+  .hero .hero-description {
+    font-size: 13px;
+    line-height: 1.7;
+  }
+}

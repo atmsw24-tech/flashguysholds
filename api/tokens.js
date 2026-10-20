@@ -65,31 +65,61 @@ async function getTokenPairs(chainId, addresses) {
 // Holder counts are only shown when returned by an indexed data provider.
 // Birdeye's holder-profile endpoint returns holder summary data for Solana.
 async function getHolderCount(token) {
+  // Birdeye's holder-profile endpoint is Solana-only. Do not label EVM-chain
+  // counts as unavailable from this provider as if the request were supported.
+  if (!token?.address || (token.chain !== "sol" && token.chain !== "solana")) return null;
   const apiKey = process.env.BIRDEYE_API_KEY;
-  if (!apiKey || !token?.address) return null;
-  const isSolana = token.chain === "sol" || token.chain === "solana";
-  const url = isSolana
-    ? `https://public-api.birdeye.so/token/v1/holder-profile?token_address=${encodeURIComponent(token.address)}&include_zero_balance=false`
-    : `https://public-api.birdeye.so/defi/token_overview?address=${encodeURIComponent(token.address)}`;
+  if (!apiKey) return null;
+
   try {
-    const response = await fetch(url, {
-      headers: {
-        accept: "application/json",
-        "X-API-KEY": apiKey,
-        "x-chain": isSolana ? "solana" : "robinhood"
+    const response = await fetch(
+      `https://public-api.birdeye.so/token/v1/holder-profile?token_address=${encodeURIComponent(token.address)}&include_zero_balance=false`,
+      {
+        headers: {
+          accept: "application/json",
+          "X-API-KEY": apiKey,
+          "x-chain": "solana"
+        }
       }
-    });
+    );
     if (!response.ok) {
-      console.warn(`Birdeye holder lookup failed (${token.chain}): ${response.status}`);
+      console.warn(`Birdeye holder-profile failed: ${response.status}`);
       return null;
     }
+
     const payload = await response.json();
-    const data = payload?.data;
-    const candidates = [data?.holder_count, data?.holderCount, data?.total_holders, data?.totalHolders, data?.holders, data?.holder];
-    const value = candidates.find((item) => item !== null && item !== undefined && item !== "" && Number.isFinite(Number(item)));
-    return value === undefined ? null : Number(value);
+    const data = payload?.data || {};
+    // Provider response shapes may expose the count under different names.
+    // Only accept a finite, non-negative number; never turn missing data into 0.
+    const candidates = [
+      data.holder_count,
+      data.holderCount,
+      data.total_holders,
+      data.totalHolders,
+      data.total_holder,
+      data.totalHolder,
+      data.holders_count,
+      data.holdersCount,
+      data.holder,
+      data.token?.holder_count,
+      data.token?.holderCount,
+      data.token?.holders,
+      data.summary?.holder_count,
+      data.summary?.holderCount,
+      data.summary?.totalHolders
+    ];
+    for (const candidate of candidates) {
+      const raw = candidate && typeof candidate === "object"
+        ? (candidate.total ?? candidate.count ?? candidate.holder_count ?? candidate.holderCount)
+        : candidate;
+      if (raw !== null && raw !== undefined && raw !== "" && Number.isFinite(Number(raw)) && Number(raw) >= 0) {
+        return Number(raw);
+      }
+    }
+    console.warn("Birdeye holder-profile response had no recognized holder-count field");
+    return null;
   } catch (error) {
-    console.warn(`Birdeye holder lookup failed (${token.chain}):`, error?.message || error);
+    console.warn("Birdeye holder lookup failed:", error?.message || error);
     return null;
   }
 }

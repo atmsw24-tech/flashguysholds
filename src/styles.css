@@ -1004,3 +1004,34 @@ a {
 .flash-pulse-grid .pulse-card[role="button"] * { pointer-events: none !important; }
 .flash-pulse-grid .pulse-card[role="button"]:focus-visible { outline: 2px solid #c9ff39; outline-offset: 3px; }
 .flash-pulse-grid .pulse-card[role="button"]:active { filter: brightness(1.12); }
+
+
+/* Ensure the page scrolls naturally and the footer remains reachable. */
+html, body, #root {
+  min-height: 100%;
+  height: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+#root {
+  min-height: 100vh;
+}
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  height: auto;
+  overflow: visible;
+}
+.main {
+  flex: 1 0 auto;
+  min-height: 0;
+  overflow: visible;
+}
+.footer {
+  flex-shrink: 0;
+  width: 100%;
+  margin-top: auto;
+  padding: 28px 20px max(35px, env(safe-area-inset-bottom));
+  line-height: 1.6;
+}

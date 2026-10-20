@@ -167,7 +167,8 @@ async function getRobinhoodTokens(profiles) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader("Cache-Control", "s-maxage=5, stale-while-revalidate=10");
+  // Let Vercel cache market data briefly; websocket feeds handle live launches.
+  res.setHeader("Cache-Control", "s-maxage=15, stale-while-revalidate=45");
   res.setHeader("Access-Control-Allow-Origin", "*");
 
   if (req.method !== "GET") {

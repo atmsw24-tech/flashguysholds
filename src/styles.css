@@ -996,3 +996,11 @@ a {
 .pulse-card[role="button"]{cursor:pointer;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease;outline:none}.pulse-card[role="button"]:hover{transform:translateY(-2px);border-color:rgba(201,255,57,.42);box-shadow:0 8px 26px rgba(0,0,0,.18)}.pulse-card[role="button"]:focus-visible{outline:2px solid #c9ff39;outline-offset:3px}.pulse-card[role="button"] .pulse-action{position:relative;z-index:1}
 
 .pulse-card[role="button"]{cursor:pointer!important;pointer-events:auto!important;user-select:none;touch-action:manipulation}.pulse-card[role="button"]>*{pointer-events:none}.pulse-card-link{display:inline-flex;align-items:center;gap:7px;margin-top:14px;color:#d9ff57;font-size:11px;font-weight:850;letter-spacing:.01em}.pulse-card[role="button"]:active{transform:scale(.99)}
+
+
+/* Click reliability patch for the three dashboard navigation cards. */
+.flash-pulse-grid { position: relative; isolation: isolate; z-index: 2; }
+.flash-pulse-grid .pulse-card[role="button"] { position: relative; z-index: 2; display: block; pointer-events: auto !important; cursor: pointer !important; -webkit-tap-highlight-color: rgba(201,255,57,.18); }
+.flash-pulse-grid .pulse-card[role="button"] * { pointer-events: none !important; }
+.flash-pulse-grid .pulse-card[role="button"]:focus-visible { outline: 2px solid #c9ff39; outline-offset: 3px; }
+.flash-pulse-grid .pulse-card[role="button"]:active { filter: brightness(1.12); }

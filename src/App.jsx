@@ -68,11 +68,13 @@ function formatAge(createdAt) {
 function TokenLogo({ token }) {
   const [imageError, setImageError] = useState(false);
 
-  if (token.logo && !imageError) {
+  const logoUrl = token.logo || token.image || token.imageUrl;
+
+  if (logoUrl && !imageError) {
     return (
       <div className="token-logo">
         <img
-          src={token.logo}
+          src={logoUrl}
           alt={token.symbol || token.name || "Token"}
           onError={() => setImageError(true)}
         />
@@ -441,14 +443,18 @@ function TokenModal({ token, onClose }) {
 
           <section className="token-extra-details" style={{ marginTop: 18 }}>
             <h3>Token Details</h3>
-            <p><strong>Contract address:</strong> <code style={{ overflowWrap: "anywhere" }}>{token.address || token.mint || "Unavailable"}</code></p>
+            <p><strong>Contract / Mint address:</strong> <code style={{ overflowWrap: "anywhere" }}>{token.address || token.mint || "Unavailable"}</code></p>
             <p><strong>Network:</strong> {token.chain === "robinhood" ? "Robinhood Chain" : "Solana"}</p>
-            <p><strong>DEX / Protocol:</strong> {token.dexId || token.protocol || "Unavailable"}</p>
-            <p><strong>Pair created:</strong> {token.pairCreatedAt ? new Date(Number(token.pairCreatedAt)).toLocaleString() : "Unavailable"}</p>
-            {token.description ? <p><strong>Description:</strong> {token.description}</p> : <p><strong>Description:</strong> Not provided by source</p>}
+            <p><strong>Launch source:</strong> {token.protocol || token.dexId || "Unavailable"}</p>
+            <p><strong>Creator wallet:</strong> <code style={{ overflowWrap: "anywhere" }}>{token.creator || "Unavailable from source"}</code></p>
+            <p><strong>Total supply:</strong> {Number(token.supply) > 0 ? Number(token.supply).toLocaleString() : "Unavailable from source"}</p>
+            <p><strong>Token decimals:</strong> {Number(token.decimals) > 0 ? token.decimals : "Unavailable from source"}</p>
+            <p><strong>Launch time:</strong> {token.createdAt ? new Date(Number(token.createdAt) < 1e12 ? Number(token.createdAt) * 1000 : Number(token.createdAt)).toLocaleString() : "Unavailable"}</p>
+            <p><strong>Pair created:</strong> {token.pairCreatedAt ? new Date(Number(token.pairCreatedAt)).toLocaleString() : "Not paired yet / unavailable"}</p>
+            <p><strong>Bonding curve graduated:</strong> {typeof token.graduated === "boolean" ? (token.graduated ? "Yes" : "No") : "Unavailable"}</p>
+            <p><strong>Description:</strong> {token.description || "Not provided by token metadata"}</p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
-              {(token.pairUrl ? [{ type: "Trading pair", url: token.pairUrl }] : []).concat(token.website ? [{ type: "Website", url: token.website }] : [], Array.isArray(token.socials) ? token.socials : []).map((link, index) => <a key={index} href={link.url} target="_blank" rel="noreferrer">{link.type || "Link"}</a>)}
-              {!token.pairUrl && !token.website && !(token.socials || []).length ? <span>Trading and social links unavailable</span> : null}
+              {(token.address && token.chain !== "robinhood" ? [{ type: "Pump.fun page", url: `https://pump.fun/coin/${encodeURIComponent(token.address)}` }, { type: "Solscan", url: `https://solscan.io/token/${encodeURIComponent(token.address)}` }] : []).concat(token.pairUrl ? [{ type: "Trading pair", url: token.pairUrl }] : [], token.website ? [{ type: "Website", url: token.website }] : [], token.twitter ? [{ type: "X / Twitter", url: token.twitter.startsWith("http") ? token.twitter : `https://x.com/${token.twitter.replace(/^@/, "")}` }] : [], token.telegram ? [{ type: "Telegram", url: token.telegram.startsWith("http") ? token.telegram : `https://t.me/${token.telegram.replace(/^@/, "")}` }] : [], Array.isArray(token.socials) ? token.socials : []).map((link, index) => <a key={index} href={link.url} target="_blank" rel="noreferrer">{link.type || "Link"}</a>)}
             </div>
           </section>
         </div>
@@ -570,6 +576,30 @@ export default function App() {
     };
     window.addEventListener("flashguys:new-launch", handleNewLaunch);
     return () => window.removeEventListener("flashguys:new-launch", handleNewLaunch);
+  }, []);
+
+  // Apply follow-up Pump.fun metadata as soon as the IPFS/metadata gateway responds.
+  useEffect(() => {
+    const handleTokenMetadata = (event) => {
+      const patch = event?.detail;
+      const address = String(patch?.address || patch?.mint || "").toLowerCase();
+      if (!address) return;
+      const applyPatch = (token) => {
+        if (String(token.address || token.mint || "").toLowerCase() !== address) return token;
+        return {
+          ...token,
+          ...(patch.image ? { image: patch.image, logo: patch.image } : {}),
+          ...(patch.description ? { description: patch.description } : {}),
+          ...(patch.website ? { website: patch.website } : {}),
+          ...(patch.twitter ? { twitter: patch.twitter } : {}),
+          ...(patch.telegram ? { telegram: patch.telegram } : {})
+        };
+      };
+      setTokens((previous) => previous.map(applyPatch));
+      setSelectedToken((previous) => previous ? applyPatch(previous) : previous);
+    };
+    window.addEventListener("flashguys:solana-token", handleTokenMetadata);
+    return () => window.removeEventListener("flashguys:solana-token", handleTokenMetadata);
   }, []);
 
   // Start the real-time Solana socket once for the whole app.

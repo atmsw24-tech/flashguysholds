@@ -91,66 +91,65 @@ async function getJson(url, timeoutMs = 10000) {
   }
 }
 
+const IPFS_GATEWAYS = [
+  "https://dweb.link/ipfs/",
+  "https://ipfs.io/ipfs/",
+  "https://gateway.pinata.cloud/ipfs/"
+];
+
+function ipfsPathFromUri(uri) {
+  const value = clean(uri);
+  if (value.startsWith("ipfs://ipfs/")) return value.slice("ipfs://ipfs/".length);
+  if (value.startsWith("ipfs://")) return value.slice("ipfs://".length);
+  const match = value.match(/^https?:\/\/[^/]+\/ipfs\/(.+)$/i);
+  return match ? match[1] : "";
+}
+
 function normalizeIpfs(uri) {
-  if (!uri) {
-    return "";
-  }
-
+  if (!uri) return "";
   const value = String(uri).trim();
-
-  if (value.startsWith("ipfs://ipfs/")) {
-    return `https://cloudflare-ipfs.com/ipfs/${value.slice("ipfs://ipfs/".length)}`;
-  }
-
-  if (value.startsWith("ipfs://")) {
-    return `https://cloudflare-ipfs.com/ipfs/${value.slice(7)}`;
-  }
-
-  // Some metadata stores return gateway URLs with an ipfs path; keep them intact.
+  const path = ipfsPathFromUri(value);
+  // Prefer a widely available public gateway; the UI will retry other gateways.
+  if (path) return IPFS_GATEWAYS[0] + path;
   return value;
 }
 
+async function getJsonFromUri(uri, timeoutMs = 7000) {
+  const value = clean(uri);
+  const path = ipfsPathFromUri(value);
+  const urls = path
+    ? IPFS_GATEWAYS.map((gateway) => gateway + path)
+    : (value ? [value] : []);
+  for (const url of urls) {
+    const data = await getJson(url, timeoutMs);
+    if (data && typeof data === "object") return data;
+  }
+  return null;
+}
+
 async function getOffchainMetadata(uri) {
-  const normalized = normalizeIpfs(uri);
+  const data = await getJsonFromUri(uri, 5000);
+  if (!data) return null;
 
-  if (!normalized) {
-    return null;
-  }
+  const imageUri =
+    clean(data.image) ||
+    clean(data.image_url) ||
+    clean(data.imageUrl) ||
+    clean(data.imageURI) ||
+    clean(data.image_uri) ||
+    clean(data.logo) ||
+    clean(data.properties?.image) ||
+    clean(data.properties?.files?.find?.((file) => file?.type?.startsWith?.("image/"))?.uri) ||
+    clean(data.properties?.files?.[0]?.uri) ||
+    "";
 
-  try {
-    const data = await getJson(normalized, 7000);
-
-    if (!data) {
-      return null;
-    }
-
-    return {
-      image: normalizeIpfs(
-        clean(data.image) ||
-        clean(data.image_url) ||
-        clean(data.imageUrl) ||
-        clean(data.logo) ||
-        clean(data.properties?.files?.[0]?.uri) ||
-        ""
-      ) || null,
-
-      description:
-        clean(data.description),
-
-      website:
-        clean(data.website) ||
-        clean(data.external_url),
-
-      twitter:
-        clean(data.twitter) ||
-        clean(data.x),
-
-      telegram:
-        clean(data.telegram)
-    };
-  } catch {
-    return null;
-  }
+  return {
+    image: normalizeIpfs(imageUri) || null,
+    description: clean(data.description),
+    website: clean(data.website) || clean(data.external_url),
+    twitter: clean(data.twitter) || clean(data.x),
+    telegram: clean(data.telegram)
+  };
 }
 
 async function getMetadata(mint) {

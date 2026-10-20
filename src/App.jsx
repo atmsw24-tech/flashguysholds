@@ -185,7 +185,7 @@ function TokenRow({ token, onClick, watched, onToggleWatch }) {
 
       <td>{formatNumber(token.volume1h)}</td>
 
-      <td>{Number.isFinite(Number(token.holders)) && token.holders !== null && token.holders !== undefined ? Number(token.holders).toLocaleString() : "Unavailable"}</td>
+      <td title={token.holderSource || "Indexed holder data is not available for this token"}>{Number.isFinite(Number(token.holders)) && token.holders !== null && token.holders !== undefined ? Number(token.holders).toLocaleString() : "Unavailable"}</td>
 
       <td
         style={{
@@ -415,8 +415,8 @@ function TokenModal({ token, onClose }) {
             </div>
 
             <div className="stat">
-              <div className="stat-label">Holders</div>
-              <div className="stat-value">{token.holders !== null && token.holders !== undefined ? Number(token.holders).toLocaleString() : "Unavailable"}</div>
+              <div className="stat-label">Indexed Holders</div>
+              <div className="stat-value" title={token.holderSource || "Indexed holder data is not available for this token"}>{token.holders !== null && token.holders !== undefined ? Number(token.holders).toLocaleString() : "Unavailable"}</div>
             </div>
 
             <div className="stat">
@@ -1035,7 +1035,7 @@ export default function App() {
                       <th>Market Cap</th>
                       <th>Liquidity</th>
                       <th>Volume 1h</th>
-                      <th>Holders</th>
+                      <th title="Holder counts from an indexed data provider">Indexed Holders</th>
                       <th>24h</th>
                       <th>Age</th>
                       <th>Watch</th>

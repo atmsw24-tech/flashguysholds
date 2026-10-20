@@ -944,12 +944,21 @@ export default function App() {
           <>
             <section className="hero">
               <h1>
-                {page === "trending" ? <>Track the <span>trend</span> before the crowd.</> : <>Find the <span>move</span> before the crowd.</>}
+                {page === "trending"
+                  ? <>Track the <span>trend</span> before the crowd.</>
+                  : <>FLASHGUYS × <span>FLASHBOYS</span></>}
               </h1>
 
-              <p>
-                {page === "trending" ? "Trending tokens ranked by reported short-term volume, momentum, and liquidity." : "Discover new tokens across Solana and Robinhood Chain in one place."}
-              </p>
+              {page === "trending" ? (
+                <p>Trending tokens ranked by reported short-term volume, momentum, and liquidity.</p>
+              ) : (
+                <>
+                  <p className="hero-tagline">Discover What's Next. Launch What's New.</p>
+                  <p className="hero-description">
+                    FLASHGUYS is building a real-time crypto discovery platform for emerging tokens across Solana and Robinhood Chain, with token feeds, contract addresses, market data, and price charts. FLASHBOYS is our dedicated launch initiative, connecting new token launches with the FLASHGUYS discovery experience. Our vision is to bring discovery, launch tools, live market data, and wallet functionality together in one ecosystem.
+                  </p>
+                </>
+              )}
             </section>
 
             <section className="flash-pulse-grid" aria-label="FLASHBOYS tools">

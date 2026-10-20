@@ -503,6 +503,9 @@ export default function App() {
   const [search, setSearch] =
     useState("");
 
+  const [remoteSearchTokens, setRemoteSearchTokens] = useState([]);
+  const [remoteSearchStatus, setRemoteSearchStatus] = useState("");
+
   const [selectedToken, setSelectedToken] =
     useState(null);
 
@@ -657,11 +660,47 @@ export default function App() {
     return () => clearInterval(interval);
   }, [chain, page]);
 
+  useEffect(() => {
+    const query = search.trim();
+    if (query.length < 2) {
+      setRemoteSearchTokens([]);
+      setRemoteSearchStatus("");
+      return;
+    }
+
+    let cancelled = false;
+    setRemoteSearchStatus("Searching live token markets…");
+    const timer = setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&chain=${encodeURIComponent(chain)}`);
+        const data = await response.json();
+        if (cancelled) return;
+        if (!response.ok || !data.success) throw new Error(data.error || "Search unavailable");
+        setRemoteSearchTokens(Array.isArray(data.tokens) ? data.tokens : []);
+        setRemoteSearchStatus(data.tokens?.length ? `Found ${data.tokens.length} matching live market result(s).` : "No matching live market found.");
+      } catch (error) {
+        if (cancelled) return;
+        setRemoteSearchTokens([]);
+        setRemoteSearchStatus("Live search is temporarily unavailable.");
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [search, chain]);
+
   const filteredTokens = useMemo(() => {
     const query =
       search.trim().toLowerCase();
 
-    let result = [...tokens];
+    const combined = new Map();
+    [...tokens, ...remoteSearchTokens].forEach((token) => {
+      const key = String(token.address || token.mint || token.id || "").toLowerCase();
+      if (key) combined.set(key, { ...combined.get(key), ...token });
+    });
+    let result = [...combined.values()];
 
     if (chain !== "all") {
       result = result.filter((token) => {
@@ -679,9 +718,12 @@ export default function App() {
         const symbol =
           token.symbol?.toLowerCase() || "";
 
+        const address = String(token.address || token.mint || "").toLowerCase();
+
         return (
           name.includes(query) ||
-          symbol.includes(query)
+          symbol.includes(query) ||
+          address.includes(query)
         );
       });
     }
@@ -704,7 +746,7 @@ export default function App() {
       0,
       MAX_VISIBLE_TOKENS
     );
-  }, [tokens, chain, search, tokenView]);
+  }, [tokens, remoteSearchTokens, chain, search, tokenView]);
 
   return (
     <div className="app">
@@ -839,6 +881,11 @@ export default function App() {
                   )
                 }
               />
+              {search.trim().length >= 2 && (
+                <div className="search-status" role="status">
+                  {remoteSearchStatus || "Searching live token markets…"}
+                </div>
+              )}
             </section>
 
             <section className="token-card">

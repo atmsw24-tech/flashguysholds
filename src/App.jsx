@@ -116,7 +116,7 @@ function TokenSparkline({ token }) {
   );
 }
 
-function TokenRow({ token, onClick }) {
+function TokenRow({ token, onClick, watched, onToggleWatch }) {
   const change = Number(token.change24h || 0);
   const [copiedCA, setCopiedCA] = useState(false);
   const contractAddress = String(token.address || token.mint || "").trim();
@@ -198,6 +198,7 @@ function TokenRow({ token, onClick }) {
       </td>
 
       <td>{formatAge(token.createdAt)}</td>
+      <td><button type="button" className={watched ? "watch-token is-watched" : "watch-token"} onClick={(event) => { event.stopPropagation(); onToggleWatch(token); }}>{watched ? "★ Saved" : "☆ Watch"}</button></td>
     </tr>
   );
 }
@@ -556,6 +557,8 @@ export default function App() {
     useState(null);
 
   const [liveLaunchCount, setLiveLaunchCount] = useState(0);
+  const [watchlistOnly, setWatchlistOnly] = useState(false);
+  const [watchlist, setWatchlist] = useState(() => { try { return JSON.parse(localStorage.getItem("flashboys.watchlist") || "[]"); } catch { return []; } });
   const seenLiveLaunches = useRef(new Set());
 
   const [accountOpen, setAccountOpen] = useState(() => {
@@ -766,6 +769,16 @@ export default function App() {
     };
   }, [search, chain]);
 
+  useEffect(() => { try { localStorage.setItem("flashboys.watchlist", JSON.stringify(watchlist)); } catch { /* storage may be unavailable */ } }, [watchlist]);
+
+  function toggleWatch(token) {
+    const address = String(token.address || token.mint || token.id || "").toLowerCase();
+    if (!address) return;
+    setWatchlist((previous) => previous.some((item) => item.address === address)
+      ? previous.filter((item) => item.address !== address)
+      : [{ address, name: token.name || "Unknown Token", symbol: token.symbol || "UNKNOWN", chain: token.chain || "solana" }, ...previous].slice(0, 200));
+  }
+
   const filteredTokens = useMemo(() => {
     const query =
       search.trim().toLowerCase();
@@ -776,6 +789,8 @@ export default function App() {
       if (key) combined.set(key, { ...combined.get(key), ...token });
     });
     let result = [...combined.values()];
+
+    if (watchlistOnly) { const saved = new Set(watchlist.map((item) => item.address)); result = result.filter((token) => saved.has(String(token.address || token.mint || token.id || "").toLowerCase())); }
 
     if (chain !== "all") {
       result = result.filter((token) => {
@@ -828,7 +843,7 @@ export default function App() {
       0,
       MAX_VISIBLE_TOKENS
     );
-  }, [tokens, remoteSearchTokens, chain, search, tokenView]);
+  }, [tokens, remoteSearchTokens, chain, search, tokenView, watchlistOnly, watchlist]);
 
   return (
     <div className="app">
@@ -873,6 +888,10 @@ export default function App() {
             Trending
           </button>
 
+          <button className={watchlistOnly ? "active" : ""} onClick={() => { setPage("discover"); setWatchlistOnly((value) => !value); }}>
+            {watchlistOnly ? "Watchlist ✓" : "Watchlist"}
+          </button>
+
           <button
             className={
               page === "launch"
@@ -905,6 +924,24 @@ export default function App() {
               <p>
                 {page === "trending" ? "Trending tokens ranked by reported short-term volume, momentum, and liquidity." : "Discover new tokens across Solana and Robinhood Chain in one place."}
               </p>
+            </section>
+
+            <section className="flash-pulse-grid" aria-label="FLASHBOYS tools">
+              <div className="pulse-card launch-radar-card">
+                <div className="pulse-card-top"><span className="pulse-icon">⚡</span><span className="pulse-live"><i /> LIVE RADAR</span></div>
+                <strong>{tokens.filter((token) => Number(token.createdAt || token.timestamp) > Date.now() - 3600000).length}</strong>
+                <h3>Launch Radar</h3><p>Tokens timestamped within the last hour in your current feed.</p>
+              </div>
+              <div className="pulse-card">
+                <div className="pulse-card-top"><span className="pulse-icon">◈</span><span className="pulse-tag">TRANSPARENCY</span></div>
+                <strong>{tokens.filter((token) => Number(token.liquidity) > 0 && Number(token.marketCap) > 0).length}</strong>
+                <h3>FlashScore Data</h3><p>Tokens with reported liquidity and market cap. This is data coverage, not a safety score.</p>
+              </div>
+              <div className="pulse-card">
+                <div className="pulse-card-top"><span className="pulse-icon">☆</span><span className="pulse-tag">YOUR LIST</span></div>
+                <strong>{watchlist.length}</strong><h3>FlashAlerts</h3><p>Save tokens on this device. Automated price alerts are not active yet.</p>
+                <button type="button" className="pulse-action" onClick={() => { setPage("discover"); setWatchlistOnly(true); }}>Open Watchlist →</button>
+              </div>
             </section>
 
             <section className="controls">
@@ -1001,6 +1038,7 @@ export default function App() {
                       <th>Holders</th>
                       <th>24h</th>
                       <th>Age</th>
+                      <th>Watch</th>
                     </tr>
                   </thead>
 
@@ -1013,9 +1051,9 @@ export default function App() {
                             `${token.chain}-${token.symbol}`
                           }
                           token={token}
-                          onClick={
-                            setSelectedToken
-                          }
+                          watched={watchlist.some((item) => item.address === String(token.address || token.mint || token.id || "").toLowerCase())}
+                          onToggleWatch={toggleWatch}
+                          onClick={setSelectedToken}
                         />
                       )
                     )}

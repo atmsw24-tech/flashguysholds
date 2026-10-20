@@ -930,17 +930,17 @@ export default function App() {
               <div className="pulse-card launch-radar-card" role="button" tabIndex={0} onClick={() => { setPage("discover"); setWatchlistOnly(false); setTokenView("new"); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setPage("discover"); setWatchlistOnly(false); setTokenView("new"); } }}>
                 <div className="pulse-card-top"><span className="pulse-icon">⚡</span><span className="pulse-live"><i /> LIVE RADAR</span></div>
                 <strong>{tokens.filter((token) => Number(token.createdAt || token.timestamp) > Date.now() - 3600000).length}</strong>
-                <h3>Launch Radar</h3><p>Tokens timestamped within the last hour in your current feed.</p>
+                <h3>Launch Radar</h3><p>Tokens timestamped within the last hour in your current feed.</p><span className="pulse-card-link">View new tokens <span aria-hidden="true">→</span></span>
               </div>
               <div className="pulse-card" role="button" tabIndex={0} onClick={() => { setPage("trending"); setWatchlistOnly(false); setTokenView("trending"); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setPage("trending"); setWatchlistOnly(false); setTokenView("trending"); } }}>
                 <div className="pulse-card-top"><span className="pulse-icon">◈</span><span className="pulse-tag">TRANSPARENCY</span></div>
                 <strong>{tokens.filter((token) => Number(token.liquidity) > 0 && Number(token.marketCap) > 0).length}</strong>
-                <h3>FlashScore Data</h3><p>Tokens with reported liquidity and market cap. This is data coverage, not a safety score.</p>
+                <h3>FlashScore Data</h3><p>Tokens with reported liquidity and market cap. This is data coverage, not a safety score.</p><span className="pulse-card-link">Explore trending <span aria-hidden="true">→</span></span>
               </div>
               <div className="pulse-card" role="button" tabIndex={0} onClick={() => { setPage("discover"); setWatchlistOnly(true); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setPage("discover"); setWatchlistOnly(true); } }}>
                 <div className="pulse-card-top"><span className="pulse-icon">☆</span><span className="pulse-tag">YOUR LIST</span></div>
                 <strong>{watchlist.length}</strong><h3>FlashAlerts</h3><p>Save tokens on this device. Automated price alerts are not active yet.</p>
-                <button type="button" className="pulse-action" onClick={() => { setPage("discover"); setWatchlistOnly(true); }}>Open Watchlist →</button>
+                <span className="pulse-card-link">Open Watchlist <span aria-hidden="true">→</span></span>
               </div>
             </section>
 

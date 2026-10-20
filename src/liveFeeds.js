@@ -2,15 +2,12 @@ import { io } from "socket.io-client";
 
 const SOLANA_SOCKET_URL = "https://sol.shrine.trade";
 
+// FLASHBOYS Pump.fun feed: new launches on Pump.fun and tokens that
+// graduate/migrate into PumpSwap. Other launchpads/DEXes are intentionally excluded.
 const SOLANA_PROTOCOLS = [
   "PUMPFUN",
   "PUMPFUN_MAYHEM",
-  "PUMPSWAP",
-  "METEORA",
-  "RAYDIUM",
-  "ORCA",
-  "BONK",
-  "STONKFUN"
+  "PUMPSWAP"
 ];
 
 // Buffer bursts of real launch events so enrichment delays do not drop the feed.

@@ -166,7 +166,10 @@ function toMarketToken(profile, pair, chain) {
     change24h: Number(pair.priceChange?.h24 || 0),
     pairAddress: pair.pairAddress || null,
     pairUrl: pair.url || profile.url || null,
-    logo: pair.info?.imageUrl || profile.icon || null,
+    // Prefer the live pair's image, then the token profile icon. Some newly
+    // launched tokens only have an image URI in their launch metadata.
+    logo: pair.info?.imageUrl || profile.icon || profile.image || null,
+    image: pair.info?.imageUrl || profile.icon || profile.image || null,
     description: profile.description || pair.info?.description || null,
     website: (pair.info?.websites || profile.links || []).find((link) => String(link.type || "").toLowerCase() === "website" || link.url)?.url || null,
     socials: (pair.info?.socials || profile.links || []).map((link) => ({ type: link.type || link.platform || link.label || "link", url: link.url || (link.handle ? `https://${String(link.platform || link.type || "").toLowerCase()}.com/${link.handle.replace(/^@/, "")}` : null) })).filter((link) => link.url),

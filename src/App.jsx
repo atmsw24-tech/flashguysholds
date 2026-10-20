@@ -412,25 +412,45 @@ function TokenModal({ token, onClose }) {
             </div>
 
             <div className="stat">
-              <div className="stat-label">
-                Holders
-              </div>
+              <div className="stat-label">Holders</div>
+              <div className="stat-value">{token.holders !== null && token.holders !== undefined ? Number(token.holders).toLocaleString() : "Unavailable"}</div>
+            </div>
 
-              <div className="stat-value">
-                {Number(
-                  token.holders || 0
-                ).toLocaleString()}
-              </div>
+            <div className="stat">
+              <div className="stat-label">24h Volume</div>
+              <div className="stat-value">{formatNumber(token.volume24h)}</div>
+            </div>
+            <div className="stat">
+              <div className="stat-label">1h Volume</div>
+              <div className="stat-value">{formatNumber(token.volume1h)}</div>
+            </div>
+            <div className="stat">
+              <div className="stat-label">Fully Diluted Value</div>
+              <div className="stat-value">{formatNumber(token.fdv)}</div>
+            </div>
+            <div className="stat">
+              <div className="stat-label">24h Buys / Sells</div>
+              <div className="stat-value">{Number(token.buys24h || 0).toLocaleString()} / {Number(token.sells24h || 0).toLocaleString()}</div>
             </div>
           </div>
 
           <div className="chart-container">
-            <div className="chart-title">
-              Price Chart
-            </div>
-
+            <div className="chart-title">Price Chart</div>
             <PriceChart token={token} />
           </div>
+
+          <section className="token-extra-details" style={{ marginTop: 18 }}>
+            <h3>Token Details</h3>
+            <p><strong>Contract address:</strong> <code style={{ overflowWrap: "anywhere" }}>{token.address || token.mint || "Unavailable"}</code></p>
+            <p><strong>Network:</strong> {token.chain === "robinhood" ? "Robinhood Chain" : "Solana"}</p>
+            <p><strong>DEX / Protocol:</strong> {token.dexId || token.protocol || "Unavailable"}</p>
+            <p><strong>Pair created:</strong> {token.pairCreatedAt ? new Date(Number(token.pairCreatedAt)).toLocaleString() : "Unavailable"}</p>
+            {token.description ? <p><strong>Description:</strong> {token.description}</p> : <p><strong>Description:</strong> Not provided by source</p>}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
+              {(token.pairUrl ? [{ type: "Trading pair", url: token.pairUrl }] : []).concat(token.website ? [{ type: "Website", url: token.website }] : [], Array.isArray(token.socials) ? token.socials : []).map((link, index) => <a key={index} href={link.url} target="_blank" rel="noreferrer">{link.type || "Link"}</a>)}
+              {!token.pairUrl && !token.website && !(token.socials || []).length ? <span>Trading and social links unavailable</span> : null}
+            </div>
+          </section>
         </div>
       </div>
     </div>

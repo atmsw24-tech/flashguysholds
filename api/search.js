@@ -46,13 +46,38 @@ export default async function handler(req, res) {
   }
 
   try {
-    const response = await fetch(`${DEX}/latest/dex/search?q=${encodeURIComponent(q)}`, {
-      headers: { Accept: "application/json" }
-    });
-    if (!response.ok) throw new Error(`DexScreener search returned ${response.status}`);
-    const data = await response.json();
+    let rawPairs = [];
+    const looksLikeAddress = q.length >= 32;
+
+    if (looksLikeAddress) {
+      // Exact Solana mint searches should query token pools directly. A
+      // general text search can omit newly launched or low-liquidity mints.
+      const chainIds = requestedChain === "robinhood"
+        ? ["robinhood"]
+        : requestedChain === "sol" || requestedChain === "solana"
+          ? ["solana"]
+          : ["solana", "robinhood"];
+
+      const responses = await Promise.all(chainIds.map(async (chainId) => {
+        const response = await fetch(`${DEX}/token-pairs/v1/${chainId}/${encodeURIComponent(q)}`, {
+          headers: { Accept: "application/json" }
+        });
+        if (!response.ok) return [];
+        const payload = await response.json();
+        return Array.isArray(payload) ? payload : [];
+      }));
+      rawPairs = responses.flat();
+    } else {
+      const response = await fetch(`${DEX}/latest/dex/search?q=${encodeURIComponent(q)}`, {
+        headers: { Accept: "application/json" }
+      });
+      if (!response.ok) throw new Error(`DexScreener search returned ${response.status}`);
+      const data = await response.json();
+      rawPairs = Array.isArray(data?.pairs) ? data.pairs : [];
+    }
+
     const queryLower = q.toLowerCase();
-    const pairs = (Array.isArray(data?.pairs) ? data.pairs : [])
+    const pairs = rawPairs
       .filter((pair) => {
         const chain = String(pair.chainId || "").toLowerCase();
         if (requestedChain === "sol" || requestedChain === "solana") return chain === "solana";
@@ -60,12 +85,9 @@ export default async function handler(req, res) {
         return true;
       })
       .filter((pair) => {
-        // For contract-address searches, require an exact token-address match.
-        if (q.length >= 32) {
-          return [pair.baseToken?.address, pair.quoteToken?.address]
-            .some((address) => String(address || "").toLowerCase() === queryLower);
-        }
-        return true;
+        if (!looksLikeAddress) return true;
+        return [pair.baseToken?.address, pair.quoteToken?.address]
+          .some((address) => String(address || "").toLowerCase() === queryLower);
       })
       .sort((a, b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0));
 

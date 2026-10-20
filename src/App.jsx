@@ -4,7 +4,7 @@ import { startLiveFeeds, subscribeLiveToken } from "./liveFeeds";
 import AccountPanel from "./AccountPanel";
 import "./styles.css";
 
-const MAX_VISIBLE_TOKENS = 300;
+const MAX_VISIBLE_TOKENS = 100;
 const MAX_STORED_TOKENS = 1500;
 
 function formatNumber(value) {
@@ -591,7 +591,12 @@ export default function App() {
     return () => stop?.();
   }, []);
 
+  const loadingTokensRef = useRef(false);
+
   async function loadTokens() {
+    // Do not let a slow API request overlap the next refresh.
+    if (loadingTokensRef.current) return;
+    loadingTokensRef.current = true;
     try {
       setLoading(true);
       setError("");
@@ -641,6 +646,7 @@ export default function App() {
       // A temporary API error must never wipe the existing market list.
       setError(err?.message || "Unable to refresh token data.");
     } finally {
+      loadingTokensRef.current = false;
       setLoading(false);
     }
   }
@@ -652,9 +658,11 @@ export default function App() {
 
     loadTokens();
 
+    // WebSocket feeds deliver new launches instantly; REST is only a backup
+    // market-data refresh, so polling every 15s is lighter on the browser/API.
     const interval = setInterval(
       loadTokens,
-      5000
+      15000
     );
 
     return () => clearInterval(interval);

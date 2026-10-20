@@ -67,7 +67,7 @@ async function getTokenPairs(chainId, addresses) {
 async function getHolderCount(token) {
   const apiKey = process.env.BIRDEYE_API_KEY;
   if (!apiKey || !token?.address) return null;
-  const isSolana = token.chain === "sol";
+  const isSolana = token.chain === "sol" || token.chain === "solana";
   const url = isSolana
     ? `https://public-api.birdeye.so/token/v1/holder-profile?token_address=${encodeURIComponent(token.address)}&include_zero_balance=false`
     : `https://public-api.birdeye.so/defi/token_overview?address=${encodeURIComponent(token.address)}`;
@@ -97,9 +97,9 @@ async function getHolderCount(token) {
 async function addHolderCounts(tokens) {
   // Limit per-refresh enrichment to avoid an unbounded number of provider calls.
   // Missing counts remain null; never represent missing data as zero.
-  const candidates = tokens.filter((token) => token.chain === "sol" || token.chain === "robinhood").slice(0, 20);
+  const candidates = tokens.filter((token) => token.chain === "sol" || token.chain === "solana" || token.chain === "robinhood").slice(0, 50);
   let cursor = 0;
-  const workers = Array.from({ length: Math.min(4, candidates.length) }, async () => {
+  const workers = Array.from({ length: Math.min(5, candidates.length) }, async () => {
     while (cursor < candidates.length) {
       const token = candidates[cursor++];
       token.holders = await getHolderCount(token);

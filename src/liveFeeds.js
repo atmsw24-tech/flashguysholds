@@ -1,6 +1,7 @@
 import { io } from "socket.io-client";
 
 const SOLANA_SOCKET_URL = "https://sol.shrine.trade";
+const PUMPPORTAL_SOCKET_URL = "wss://pumpportal.fun/api/data";
 
 // FLASHBOYS Pump.fun feed: new launches on Pump.fun and tokens that
 // graduate/migrate into PumpSwap. Other launchpads/DEXes are intentionally excluded.
@@ -16,6 +17,7 @@ const ENRICH_DELAY_MS = 350;
 
 let stopped = false;
 let socket = null;
+let pumpPortalSocket = null;
 
 const enrichmentQueue = [];
 const queuedMints = new Set();
@@ -744,6 +746,45 @@ function startSolanaSocket({
     }
   );
 
+  // Subscribe directly to PumpPortal's Pump.fun new-token stream as a
+  // second source. Mint-level deduplication merges duplicate events from Shrine.
+  try {
+    pumpPortalSocket = new WebSocket(PUMPPORTAL_SOCKET_URL);
+    pumpPortalSocket.addEventListener("open", () => {
+      console.log("FLASHGUYS: PumpPortal connected; subscribing to new Pump.fun tokens");
+      pumpPortalSocket.send(JSON.stringify({ method: "subscribeNewToken" }));
+      onStatus?.({ chain: "Pump.fun", connected: true });
+    });
+    pumpPortalSocket.addEventListener("message", (message) => {
+      try {
+        const event = JSON.parse(message.data);
+        if (!event || event.txType && event.txType !== "create") return;
+        const mint = clean(event.mint) || clean(event.tokenAddress) || clean(event.address);
+        if (!mint) return;
+        queueToken({
+          ...event,
+          mint,
+          protocol: "PUMPFUN",
+          timestamp: Number(event.timestamp) || Math.floor(Date.now() / 1000),
+          price: event.priceUSD ?? event.price,
+          marketCap: event.marketCapUSD ?? event.marketCap,
+          creator: event.traderPublicKey || event.creator
+        });
+      } catch (error) {
+        console.warn("FLASHGUYS: could not parse PumpPortal event", error);
+      }
+    });
+    pumpPortalSocket.addEventListener("error", (error) => {
+      console.warn("FLASHGUYS: PumpPortal websocket error", error);
+      onStatus?.({ chain: "Pump.fun", connected: false });
+    });
+    pumpPortalSocket.addEventListener("close", () => {
+      onStatus?.({ chain: "Pump.fun", connected: false });
+    });
+  } catch (error) {
+    console.warn("FLASHGUYS: PumpPortal websocket unavailable", error);
+  }
+
   socket.on(
     "connect",
     () => {
@@ -842,6 +883,10 @@ function startSolanaSocket({
     if (socket) {
       socket.disconnect();
       socket = null;
+    }
+    if (pumpPortalSocket) {
+      pumpPortalSocket.close();
+      pumpPortalSocket = null;
     }
 
     subscribedMints.clear();

@@ -66,27 +66,34 @@ function formatAge(createdAt) {
 }
 
 function TokenLogo({ token }) {
-  const [imageError, setImageError] = useState(false);
+  const [failedUrls, setFailedUrls] = useState([]);
+  const raw = token.logo || token.image || token.imageUrl || token.image_uri || token.imageUri || "";
+  const value = typeof raw === "string" ? raw.trim() : "";
+  const ipfsPath = value.startsWith("ipfs://ipfs/") ? value.slice(12) : value.startsWith("ipfs://") ? value.slice(7) : "";
+  const candidates = ipfsPath
+    ? ["https://cloudflare-ipfs.com/ipfs/" + ipfsPath, "https://ipfs.io/ipfs/" + ipfsPath, "https://dweb.link/ipfs/" + ipfsPath]
+    : (value ? [value] : []);
+  const logoUrl = candidates.find((url) => !failedUrls.includes(url));
 
-  const logoUrl = token.logo || token.image || token.imageUrl;
+  useEffect(() => {
+    setFailedUrls([]);
+  }, [token.address, token.mint, token.logo, token.image, token.imageUrl, token.image_uri, token.imageUri]);
 
-  if (logoUrl && !imageError) {
+  if (logoUrl) {
     return (
       <div className="token-logo">
         <img
           src={logoUrl}
           alt={token.symbol || token.name || "Token"}
-          onError={() => setImageError(true)}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setFailedUrls((previous) => previous.includes(logoUrl) ? previous : [...previous, logoUrl])}
         />
       </div>
     );
   }
 
-  const letter =
-    (token.symbol || token.name || "?")
-      .charAt(0)
-      .toUpperCase();
-
+  const letter = (token.symbol || token.name || "?").charAt(0).toUpperCase();
   return <div className="token-logo">{letter}</div>;
 }
 

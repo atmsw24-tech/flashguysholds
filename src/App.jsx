@@ -672,7 +672,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (page !== "discover") {
+    if (page === "launch") {
       return;
     }
 
@@ -764,6 +764,13 @@ export default function App() {
         (Number(b.change24h || 0) - Number(a.change24h || 0)) ||
         (Number(b.liquidity || 0) - Number(a.liquidity || 0))
       );
+    } else if (tokenView === "trending") {
+      // Rank trending tokens using reported short-term activity and momentum.
+      result.sort((a, b) =>
+        (Number(b.volume1h || 0) - Number(a.volume1h || 0)) ||
+        (Number(b.change1h || 0) - Number(a.change1h || 0)) ||
+        (Number(b.liquidity || 0) - Number(a.liquidity || 0))
+      );
     } else {
       result.sort((a, b) =>
         Number(b.createdAt || b.timestamp || 0) - Number(a.createdAt || a.timestamp || 0)
@@ -813,6 +820,13 @@ export default function App() {
           </button>
 
           <button
+            className={page === "trending" ? "active" : ""}
+            onClick={() => { setPage("trending"); setTokenView("trending"); }}
+          >
+            Trending
+          </button>
+
+          <button
             className={
               page === "launch"
                 ? "active"
@@ -838,24 +852,19 @@ export default function App() {
           <>
             <section className="hero">
               <h1>
-                Find the{" "}
-                <span>
-                  move
-                </span>{" "}
-                before the crowd.
+                {page === "trending" ? <>Track the <span>trend</span> before the crowd.</> : <>Find the <span>move</span> before the crowd.</>}
               </h1>
 
               <p>
-                Discover new tokens across
-                Solana and Robinhood Chain
-                in one place.
+                {page === "trending" ? "Trending tokens ranked by reported short-term volume, momentum, and liquidity." : "Discover new tokens across Solana and Robinhood Chain in one place."}
               </p>
             </section>
 
             <section className="controls">
               <div className="chain-tabs" aria-label="Token view">
-                <button className={tokenView === "new" ? "active" : ""} onClick={() => setTokenView("new")}>New Tokens</button>
-                <button className={tokenView === "top" ? "active" : ""} onClick={() => setTokenView("top")}>Daily Top Tokens</button>
+                <button className={tokenView === "new" ? "active" : ""} onClick={() => { setTokenView("new"); setPage("discover"); }}>New Tokens</button>
+                <button className={tokenView === "top" ? "active" : ""} onClick={() => { setTokenView("top"); setPage("discover"); }}>Daily Top Tokens</button>
+                <button className={tokenView === "trending" ? "active" : ""} onClick={() => { setTokenView("trending"); setPage("trending"); }}>Trending</button>
               </div>
               <div className="chain-tabs" aria-label="Blockchain filter">
                 <button
@@ -980,7 +989,7 @@ export default function App() {
               }}
             >
               <span>
-                {tokenView === "top" ? "Daily Top Tokens" : "Newest Tokens"} · Showing {filteredTokens.length} tokens · Live launches detected this session: {liveLaunchCount}
+                {tokenView === "top" ? "Daily Top Tokens" : tokenView === "trending" ? "Trending Tokens" : "Newest Tokens"} · Showing {filteredTokens.length} tokens · Live launches detected this session: {liveLaunchCount}
               </span>
 
               <span>

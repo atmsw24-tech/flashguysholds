@@ -142,11 +142,20 @@ function toMarketToken(profile, pair, chain) {
 }
 
 async function getSolanaTokens(profiles) {
+  // Only show real Pump.fun bonding-curve/graduate markets in the API-backed
+  // list. Live pre-pair launches arrive through the Shrine Pump.fun websocket.
   const selected = profiles
     .filter((token) => token.chainId === "solana" && token.tokenAddress)
-    .slice(0, 80);
+    .slice(0, 120);
   const pairs = await getTokenPairs("solana", selected.map((token) => token.tokenAddress));
-  return selected.map((profile) => toMarketToken(profile, bestPairForToken(pairs, profile.tokenAddress), "sol")).filter(Boolean);
+  const pumpPairs = pairs.filter((pair) => {
+    const dex = String(pair.dexId || "").toLowerCase();
+    return dex.includes("pumpfun") || dex.includes("pump-swap") || dex.includes("pumpswap");
+  });
+  return selected
+    .map((profile) => toMarketToken(profile, bestPairForToken(pumpPairs, profile.tokenAddress), "sol"))
+    .filter(Boolean)
+    .map((token) => ({ ...token, protocol: "PUMPFUN/PUMPSWAP", source: "DexScreener" }));
 }
 
 async function getRobinhoodTokens(profiles) {

@@ -498,6 +498,41 @@ function TokenModal({ token, onClose }) {
   );
 }
 
+function HolderRewardsPage() {
+  const [competitionTab, setCompetitionTab] = useState("rules");
+  const rules = [
+    ["1", "Connect your wallet", "Use the wallet that holds the eligible token. Wallet ownership must be verified; connecting alone does not prove holdings."],
+    ["2", "Hold eligible tokens", "Each contest publishes eligible tokens, snapshot times, minimum balance, and hold period before it starts."],
+    ["3", "Rank by verified holdings", "Leaderboard positions must use indexed on-chain balances and anti-sybil checks, not self-reported balances."],
+    ["4", "Share verified creator fees", "A published share of creator fees can be distributed only after the fee source and payout mechanism are integrated and tested."]
+  ];
+  return (
+    <section className="holder-rewards-page">
+      <div className="rewards-hero">
+        <div className="rewards-kicker">⚡ FLASHGUYS REWARDS ARENA</div>
+        <h1>Hold. Compete. <span>Earn a share.</span></h1>
+        <p>Holder competitions designed to share eligible creator-fee revenue with qualifying token holders. Rewards are not guaranteed and depend on actual fees, published rules, and on-chain verification.</p>
+        <div className="rewards-status-row"><span className="rewards-status-pill">CREATOR FEE SOURCE: NOT CONNECTED</span><span className="rewards-status-pill rewards-status-muted">PAYOUTS: DISABLED</span></div>
+      </div>
+      <div className="rewards-metric-grid">
+        <div className="rewards-metric"><span>Current reward pool</span><strong>Not available</strong><small>Waiting for verified creator-fee data</small></div>
+        <div className="rewards-metric"><span>Eligible holders</span><strong>Not indexed</strong><small>Wallet-level holder data is required</small></div>
+        <div className="rewards-metric"><span>Competition status</span><strong>Setup required</strong><small>No live contest is accepting entries yet</small></div>
+      </div>
+      <div className="rewards-panel">
+        <div className="rewards-panel-heading"><div><span className="rewards-kicker">LEADERBOARD</span><h2>Top holders</h2></div><span className="rewards-coming-soon">AWAITING ON-CHAIN INDEXER</span></div>
+        <div className="rewards-tabs">
+          <button className={competitionTab === "rules" ? "active" : ""} onClick={() => setCompetitionTab("rules")}>How it works</button>
+          <button className={competitionTab === "eligibility" ? "active" : ""} onClick={() => setCompetitionTab("eligibility")}>Eligibility</button>
+          <button className={competitionTab === "payouts" ? "active" : ""} onClick={() => setCompetitionTab("payouts")}>Fee payouts</button>
+        </div>
+        {competitionTab === "rules" ? <div className="rewards-rules-list">{rules.map(([number, title, description]) => <div className="rewards-rule" key={number}><span>{number}</span><div><strong>{title}</strong><p>{description}</p></div></div>)}</div> : competitionTab === "eligibility" ? <div className="rewards-info-block"><h3>Fair competition rules</h3><ul><li>Only publicly verifiable on-chain balances count.</li><li>Each contest publishes the token contract, snapshot time, minimum qualifying balance, and ranking method.</li><li>Anti-sybil exclusions must follow published rules.</li><li>Never share seed phrases or private keys to participate.</li></ul></div> : <div className="rewards-info-block"><h3>Creator fees and payouts</h3><ul><li>Creator-fee revenue must be verified from a supported protocol or fee wallet.</li><li>The exact holder allocation, operating fees, and payout schedule must be disclosed.</li><li>Distribution remains disabled until the fee source and payout mechanism are integrated and tested on-chain.</li><li>Rewards can be zero if no eligible creator fees are generated.</li></ul></div>}
+        <div className="rewards-notice">No earnings, holder rankings, or fee amounts are fabricated. Live competition data will appear after FLASHGUYS connects an indexed holder-balance source and verifies a creator-fee distribution mechanism.</div>
+      </div>
+    </section>
+  );
+}
+
 function LaunchPage() {
   const [walletStatus, setWalletStatus] = useState("");
   const [networkBusy, setNetworkBusy] = useState(false);
@@ -926,6 +961,8 @@ export default function App() {
             {watchlistOnly ? "Watchlist ✓" : "Watchlist"}
           </button>
 
+          <button className={page === "rewards" ? "active" : ""} onClick={() => setPage("rewards")}>Holder Rewards</button>
+
           <button
             className={
               page === "launch"
@@ -948,6 +985,8 @@ export default function App() {
       <main className="main">
         {page === "launch" ? (
           <LaunchPage />
+        ) : page === "rewards" ? (
+          <HolderRewardsPage />
         ) : (
           <>
             <section className="hero">

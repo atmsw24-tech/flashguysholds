@@ -187,21 +187,102 @@ function toMarketToken(profile, pair, chain) {
   };
 }
 
+async function getGeckoTerminalSolanaPools() {
+  // Discover newly indexed Solana pools independently of DexScreener's
+  // promotional token-profile feed, which omits many fresh launches.
+  try {
+    const response = await fetch(
+      "https://api.geckoterminal.com/api/v2/networks/solana/new_pools?page=1&include=base_token,quote_token",
+      { headers: { accept: "application/json" } }
+    );
+    if (!response.ok) {
+      console.warn(`GeckoTerminal Solana new-pools returned ${response.status}`);
+      return [];
+    }
+    const payload = await response.json();
+    const included = new Map(
+      (Array.isArray(payload.included) ? payload.included : [])
+        .filter((item) => item.type === "token")
+        .map((item) => [item.id, item.attributes || {}])
+    );
+    const rows = Array.isArray(payload.data) ? payload.data : [];
+    return rows.map((pool) => {
+      const attrs = pool.attributes || {};
+      const rel = pool.relationships || {};
+      const baseId = rel.base_token?.data?.id;
+      const base = included.get(baseId) || {};
+      const address = base.address || (baseId ? baseId.replace(/^token_/, "") : null);
+      if (!address) return null;
+      const volume = attrs.volume_usd || {};
+      const change = attrs.price_change_percentage || {};
+      return {
+        id: pool.id,
+        chain: "sol",
+        address,
+        name: base.name || String(attrs.name || "Unknown").split(" / ")[0],
+        symbol: base.symbol || "???",
+        price: Number(attrs.base_token_price_usd || 0),
+        marketCap: Number(attrs.market_cap_usd || attrs.fdv_usd || 0),
+        liquidity: Number(attrs.reserve_in_usd || 0),
+        volume1h: Number(volume.h1 || 0),
+        volume24h: Number(volume.h24 || 0),
+        change24h: Number(change.h24 || 0),
+        createdAt: attrs.pool_created_at || null,
+        pairCreatedAt: attrs.pool_created_at || null,
+        logo: base.image_url || null,
+        image: base.image_url || null,
+        pairAddress: attrs.address || null,
+        pairUrl: `https://www.geckoterminal.com/solana/pools/${attrs.address || pool.id}`,
+        dexId: attrs.dex_id || null,
+        source: "GeckoTerminal",
+        protocol: attrs.dex_id || null,
+        holders: null,
+        holderSource: null
+      };
+    }).filter(Boolean);
+  } catch (error) {
+    console.warn("GeckoTerminal Solana discovery failed:", error?.message || error);
+    return [];
+  }
+}
+
 async function getSolanaTokens(profiles) {
-  // Only show real Pump.fun bonding-curve/graduate markets in the API-backed
-  // list. Live pre-pair launches arrive through the Shrine Pump.fun websocket.
+  // DexScreener profile discovery alone misses many brand-new Solana launches.
+  // Combine it with GeckoTerminal's indexed new-pools feed so fresh pools can
+  // appear even when they have not been promoted in token profiles.
   const selected = profiles
     .filter((token) => token.chainId === "solana" && token.tokenAddress)
     .slice(0, 120);
-  const pairs = await getTokenPairs("solana", selected.map((token) => token.tokenAddress));
-  const pumpPairs = pairs.filter((pair) => {
-    const dex = String(pair.dexId || "").toLowerCase();
-    return dex.includes("pumpfun") || dex.includes("pump-swap") || dex.includes("pumpswap");
-  });
-  return selected
-    .map((profile) => toMarketToken(profile, bestPairForToken(pumpPairs, profile.tokenAddress), "sol"))
+  const [pairs, geckoTokens] = await Promise.all([
+    getTokenPairs("solana", selected.map((token) => token.tokenAddress)),
+    getGeckoTerminalSolanaPools()
+  ]);
+  const dexTokens = selected
+    .map((profile) => toMarketToken(profile, bestPairForToken(pairs, profile.tokenAddress), "sol"))
     .filter(Boolean)
     .map((token) => ({ ...token, protocol: "PUMPFUN/PUMPSWAP", source: "DexScreener" }));
+
+  const byAddress = new Map();
+  for (const token of [...geckoTokens, ...dexTokens]) {
+    const key = String(token.address || "").toLowerCase();
+    if (!key) continue;
+    const existing = byAddress.get(key);
+    // Prefer more complete market data while retaining metadata from either source.
+    if (!existing) {
+      byAddress.set(key, token);
+    } else {
+      const preferred = Number(token.liquidity || 0) >= Number(existing.liquidity || 0) ? token : existing;
+      byAddress.set(key, { ...existing, ...token, ...preferred,
+        logo: preferred.logo || existing.logo || token.logo || null,
+        image: preferred.image || existing.image || token.image || null,
+        pairUrl: preferred.pairUrl || existing.pairUrl || token.pairUrl || null,
+        source: existing.source === token.source ? existing.source : "GeckoTerminal + DexScreener"
+      });
+    }
+  }
+  return [...byAddress.values()].sort((a, b) =>
+    new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+  );
 }
 
 async function getGeckoTerminalRobinhoodPools() {

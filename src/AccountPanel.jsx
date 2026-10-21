@@ -48,6 +48,30 @@ async function authRequest(path, body, accessToken) {
   return data;
 }
 
+async function saveProfile(accessToken, user, updates = {}) {
+  if (!SUPABASE_URL || !SUPABASE_KEY || !accessToken || !user?.id) return false;
+  const response = await fetch(SUPABASE_URL + "/rest/v1/profiles?on_conflict=id", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: SUPABASE_KEY,
+      Authorization: "Bearer " + accessToken,
+      Prefer: "resolution=merge-duplicates,return=minimal"
+    },
+    body: JSON.stringify({
+      id: user.id,
+      email: user.email || null,
+      ...updates,
+      updated_at: new Date().toISOString()
+    })
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.message || data.details || "Could not save your profile to the database.");
+  }
+  return true;
+}
+
 export default function AccountPanel({ onClose }) {
   const [mode, setMode] = useState("signup");
   const [email, setEmail] = useState("");
@@ -118,7 +142,12 @@ export default function AccountPanel({ onClose }) {
         };
         localStorage.setItem(SESSION_KEY, JSON.stringify(saved));
         setSession(saved);
-        setMessage("You are signed in.");
+        try {
+          await saveProfile(saved.access_token, saved.user);
+          setMessage("You are signed in. Your account profile is saved to the database.");
+        } catch (profileError) {
+          setMessage("You are signed in, but profile storage needs setup: " + profileError.message);
+        }
       }
       setPassword("");
     } catch (error) {
@@ -150,7 +179,16 @@ export default function AccountPanel({ onClose }) {
         localStorage.setItem(WALLET_KEY, JSON.stringify(connected));
         setWallet(connected);
         window.dispatchEvent(new Event("flashguys:wallet"));
-        setMessage(`${detected.name} connected to FLASHGUYS. No transaction was sent.`);
+        if (session?.access_token && session?.user?.id) {
+          try {
+            await saveProfile(session.access_token, session.user, { wallet_address: address, wallet_chain: "solana", wallet_name: detected.name });
+            setMessage(`${detected.name} connected. Wallet address saved to your FLASHGUYS database profile. No transaction was sent.`);
+          } catch (profileError) {
+            setMessage(`${detected.name} connected in this browser, but database saving failed: ${profileError.message}`);
+          }
+        } else {
+          setMessage(`${detected.name} connected in this browser. Sign in to save this wallet to your database profile. No transaction was sent.`);
+        }
       } else {
         const provider = getEvmProvider();
         if (!provider?.request) throw new Error("No EVM wallet was detected. Install MetaMask or another compatible wallet, then reload FLASHGUYS.");
@@ -202,7 +240,16 @@ export default function AccountPanel({ onClose }) {
         localStorage.setItem(WALLET_KEY, JSON.stringify(connected));
         setWallet(connected);
         window.dispatchEvent(new Event("flashguys:wallet"));
-        setMessage(`${connected.walletName} connected to Robinhood Chain (4663). No transaction was sent.`);
+        if (session?.access_token && session?.user?.id) {
+          try {
+            await saveProfile(session.access_token, session.user, { wallet_address: address, wallet_chain: "robinhood", wallet_name: connected.walletName });
+            setMessage(`${connected.walletName} connected to Robinhood Chain (4663). Wallet address saved to your FLASHGUYS database profile. No transaction was sent.`);
+          } catch (profileError) {
+            setMessage(`${connected.walletName} connected, but database saving failed: ${profileError.message}`);
+          }
+        } else {
+          setMessage(`${connected.walletName} connected to Robinhood Chain (4663). Sign in to save this wallet to your database profile. No transaction was sent.`);
+        }
       }
     } catch (error) {
       setMessage(error?.message || "Wallet connection was cancelled or failed.");

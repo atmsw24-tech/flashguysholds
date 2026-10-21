@@ -179,6 +179,10 @@ function TokenRow({ token, onClick, watched, onToggleWatch }) {
         </span>
       </td>
 
+      <td className="mcap-first-cell" style={{ fontWeight: 800, color: "#eaff00", whiteSpace: "nowrap" }}>
+        {formatNumber(token.marketCap)}
+      </td>
+
       <td>
         {contractAddress ? (
           <div className="contract-address-cell" title={contractAddress} style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 190, flexWrap: "wrap" }}>
@@ -194,8 +198,6 @@ function TokenRow({ token, onClick, watched, onToggleWatch }) {
       <td>{formatPrice(token.price)}</td>
 
       <td className="sparkline-cell"><TokenSparkline token={token} /></td>
-
-      <td>{formatNumber(token.marketCap)}</td>
 
       <td>{formatNumber(token.liquidity)}</td>
 
@@ -1111,10 +1113,10 @@ export default function App() {
                     <tr>
                       <th>Token</th>
                       <th>Chain</th>
+                      <th>MCAP</th>
                       <th>Contract Address</th>
                       <th>Price</th>
                       <th>Chart</th>
-                      <th>Market Cap</th>
                       <th>Liquidity</th>
                       <th>Volume 1h</th>
                       <th title="Holder counts from an indexed data provider">Indexed Holders</th>

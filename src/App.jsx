@@ -478,6 +478,98 @@ function TokenModal({ token, onClose }) {
             <PriceChart token={token} />
           </div>
 
+          <section className="token-activity-panel" aria-label="Token activity and holder details">
+            <div className="token-activity-heading">
+              <div>
+                <div className="chart-title">ON-CHAIN INTELLIGENCE</div>
+                <h3>Token Activity</h3>
+              </div>
+              <span className="token-activity-chain">{token.chain === "robinhood" ? "ROBINHOOD CHAIN" : "SOLANA"}</span>
+            </div>
+
+            <div className="token-activity-grid">
+              <div className="token-activity-stat">
+                <span>Indexed holders</span>
+                <strong>{token.holders !== null && token.holders !== undefined && Number.isFinite(Number(token.holders)) ? Number(token.holders).toLocaleString() : "Unavailable"}</strong>
+                <small>{token.holderSource || "No indexed holder count supplied"}</small>
+              </div>
+              <div className="token-activity-stat">
+                <span>Buys · last 5m</span>
+                <strong className="activity-buy">{Number(token.txns5m?.buys ?? token.buys5m ?? 0).toLocaleString()}</strong>
+                <small>Reported by market data</small>
+              </div>
+              <div className="token-activity-stat">
+                <span>Sells · last 5m</span>
+                <strong className="activity-sell">{Number(token.txns5m?.sells ?? token.sells5m ?? 0).toLocaleString()}</strong>
+                <small>Reported by market data</small>
+              </div>
+              <div className="token-activity-stat">
+                <span>24h transactions</span>
+                <strong>{(Number(token.txns24h?.buys ?? token.buys24h ?? 0) + Number(token.txns24h?.sells ?? token.sells24h ?? 0)).toLocaleString()}</strong>
+                <small>{Number(token.txns24h?.buys ?? token.buys24h ?? 0).toLocaleString()} buys / {Number(token.txns24h?.sells ?? token.sells24h ?? 0).toLocaleString()} sells</small>
+              </div>
+            </div>
+
+            <div className="token-activity-subpanel">
+              <div className="token-activity-subheading">
+                <strong>Buy / sell pressure · 24h</strong>
+                <span>Source-reported counts</span>
+              </div>
+              {(() => {
+                const buys = Math.max(0, Number(token.txns24h?.buys ?? token.buys24h ?? 0));
+                const sells = Math.max(0, Number(token.txns24h?.sells ?? token.sells24h ?? 0));
+                const total = buys + sells;
+                const buyPercent = total ? (buys / total) * 100 : 0;
+                return <>
+                  <div className="activity-pressure-track" role="img" aria-label={total ? `${buyPercent.toFixed(1)} percent buys and ${(100 - buyPercent).toFixed(1)} percent sells in the last 24 hours` : "Buy and sell pressure unavailable"}>
+                    <span style={{ width: `${buyPercent}%` }} />
+                  </div>
+                  <div className="activity-pressure-legend">
+                    <span className="activity-buy">▲ Buys {total ? `${buyPercent.toFixed(1)}%` : "—"}</span>
+                    <span className="activity-sell">▼ Sells {total ? `${(100 - buyPercent).toFixed(1)}%` : "—"}</span>
+                  </div>
+                  {!total ? <p className="activity-unavailable">Buy/sell counts are not supplied for this token yet. Zero is not treated as proof of no trading.</p> : null}
+                </>;
+              })()}
+            </div>
+
+            <div className="token-activity-subpanel">
+              <div className="token-activity-subheading">
+                <strong>Holder distribution</strong>
+                <span>{Array.isArray(token.topHolders) && token.topHolders.length ? "Indexed wallet data" : "Indexer required"}</span>
+              </div>
+              {Array.isArray(token.topHolders) && token.topHolders.length ? (
+                <div className="top-holder-list">
+                  {token.topHolders.slice(0, 5).map((holder, index) => {
+                    const share = Number(holder.percentage ?? holder.sharePercent ?? holder.percent);
+                    const wallet = String(holder.address || holder.owner || holder.wallet || "");
+                    return <div className="top-holder-row" key={wallet || index}>
+                      <span>#{index + 1} <code>{wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-5)}` : "Wallet unavailable"}</code></span>
+                      <strong>{Number.isFinite(share) ? `${share.toFixed(2)}%` : "Share unavailable"}</strong>
+                    </div>;
+                  })}
+                </div>
+              ) : <p className="activity-unavailable">Top-wallet balances and concentration are not provided in the current feed. FLASHGUYS will not estimate holder distribution from holder count alone.</p>}
+            </div>
+
+            <div className="token-activity-subpanel">
+              <div className="token-activity-subheading">
+                <strong>Recent trades</strong>
+                <span>Live transaction records</span>
+              </div>
+              {Array.isArray(token.recentTrades) && token.recentTrades.length ? (
+                <div className="recent-trades-list">
+                  {token.recentTrades.slice(0, 8).map((trade, index) => <div className="recent-trade-row" key={trade.signature || trade.hash || trade.id || index}>
+                    <span className={String(trade.side || trade.type || "").toLowerCase().includes("sell") ? "activity-sell" : "activity-buy"}>{String(trade.side || trade.type || "TRADE").toUpperCase()}</span>
+                    <strong>{trade.amountUsd != null ? formatNumber(trade.amountUsd) : trade.valueUsd != null ? formatNumber(trade.valueUsd) : "Amount unavailable"}</strong>
+                    <time>{trade.timestamp || trade.time ? new Date(Number(trade.timestamp || trade.time) < 1e12 ? Number(trade.timestamp || trade.time) * 1000 : Number(trade.timestamp || trade.time)).toLocaleTimeString() : "Time unavailable"}</time>
+                    {(trade.signature || trade.hash) ? <a href={token.chain === "robinhood" ? `https://robinhoodchain.blockscout.com/tx/${trade.hash || trade.signature}` : `https://solscan.io/tx/${trade.signature || trade.hash}`} target="_blank" rel="noreferrer">View ↗</a> : null}
+                  </div>)}
+                </div>
+              ) : <p className="activity-unavailable">Individual trade records are not included in the current token-feed response. Summary buy/sell counts above are shown only when reported by the market-data source.</p>}
+            </div>
+          </section>
+
           <section className="token-extra-details" style={{ marginTop: 18 }}>
             <h3>Token Details</h3>
             <p><strong>Contract / Mint address:</strong> <code style={{ overflowWrap: "anywhere" }}>{token.address || token.mint || "Unavailable"}</code></p>

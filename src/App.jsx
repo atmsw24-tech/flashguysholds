@@ -1002,9 +1002,9 @@ export default function App() {
                 <p>Trending tokens ranked by reported short-term volume, momentum, and liquidity.</p>
               ) : (
                 <>
-                  <p className="hero-tagline">Discover What's Next. Launch What's New.</p>
+                  <p className="hero-tagline">In 2014, there were Flash Guys. Now, it’s time for FLASHBOYS. ⚡</p>
                   <p className="hero-description">
-                    FLASHGUYS is building a real-time crypto discovery platform for emerging tokens across Solana and Robinhood Chain, with token feeds, contract addresses, market data, and price charts. FLASHBOYS is our dedicated launch initiative, connecting new token launches with the FLASHGUYS discovery experience. Our vision is to bring discovery, launch tools, live market data, and wallet functionality together in one ecosystem.
+                    A new generation moves faster. FLASHBOYS is the launch culture inside FLASHGUYS—built for people who spot what’s next before the crowd. Discover emerging tokens across Solana and Robinhood Chain, track live market data, and find your next move.
                   </p>
                 </>
               )}

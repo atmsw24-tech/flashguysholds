@@ -309,7 +309,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    const profiles = await getLatestProfiles();
+    // Keep the Robinhood feed independent: if DexScreener's profile endpoint
+    // is unavailable, GeckoTerminal can still provide Robinhood new pools.
+    const profiles = await getLatestProfiles().catch((error) => {
+      console.warn("DexScreener latest profiles unavailable:", error?.message || error);
+      return [];
+    });
     const [solanaResult, robinhoodResult] = await Promise.allSettled([
       chain === "robinhood" ? Promise.resolve([]) : getSolanaTokens(profiles),
       chain === "sol" ? Promise.resolve([]) : getRobinhoodTokens(profiles)

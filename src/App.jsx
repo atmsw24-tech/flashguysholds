@@ -4,7 +4,7 @@ import { startLiveFeeds, subscribeLiveToken } from "./liveFeeds";
 import AccountPanel from "./AccountPanel";
 import "./styles.css";
 
-const MAX_VISIBLE_TOKENS = 100;
+const MAX_VISIBLE_TOKENS = 50;
 const MAX_STORED_TOKENS = 1500;
 
 function formatNumber(value) {

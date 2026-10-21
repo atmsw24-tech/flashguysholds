@@ -122,3 +122,18 @@ FLASHGUYS treats Robinhood Chain as a blockchain network and does not imply that
 ## License
 
 Project-specific license to be determined.
+
+## Account database setup (Supabase)
+
+1. Create or open your Supabase project.
+2. In **SQL Editor**, run `supabase/migrations/20261021_profiles.sql` from this repository. It creates a private per-user `public.profiles` table, enables row-level security, and creates a profile row automatically when Supabase Auth creates an account.
+3. In **Project Settings → API**, copy the project URL and publishable/anon key.
+4. In Vercel → **Project → Settings → Environment Variables**, add:
+   - `VITE_SUPABASE_URL` = your Supabase project URL
+   - `VITE_SUPABASE_ANON_KEY` = your Supabase publishable/anon key
+5. Apply the variables to Production (and Preview if needed), then redeploy.
+6. Create a test account. Check **Authentication → Users** for the account and **Table Editor → profiles** for its profile row.
+
+When a signed-in user connects a Solana or Robinhood Chain wallet, FLASHGUYS attempts to save that public wallet address to their own profile row. Wallet connections made while signed out remain local to that browser. Never put a Supabase service-role key, wallet private key, or seed phrase in frontend environment variables or GitHub.
+
+The code changes do not connect this repository to your Supabase project automatically. You must run the SQL and configure the two Vercel variables before live account persistence can work.

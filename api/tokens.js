@@ -204,12 +204,91 @@ async function getSolanaTokens(profiles) {
     .map((token) => ({ ...token, protocol: "PUMPFUN/PUMPSWAP", source: "DexScreener" }));
 }
 
+async function getGeckoTerminalRobinhoodPools() {
+  // DexScreener's latest-profile list is a small promotional list, not a
+  // complete token directory. Use GeckoTerminal's indexed new-pools feed as
+  // an additional discovery source for Robinhood Chain (network id: robinhood).
+  try {
+    const response = await fetch(
+      "https://api.geckoterminal.com/api/v2/networks/robinhood/new_pools?page=1&include=base_token,quote_token",
+      { headers: { accept: "application/json" } }
+    );
+    if (!response.ok) {
+      console.warn(`GeckoTerminal Robinhood new-pools returned ${response.status}`);
+      return [];
+    }
+    const payload = await response.json();
+    const included = new Map(
+      (Array.isArray(payload.included) ? payload.included : [])
+        .filter((item) => item.type === "token")
+        .map((item) => [item.id, item.attributes || {}])
+    );
+    const rows = Array.isArray(payload.data) ? payload.data : [];
+    return rows.map((pool) => {
+      const attrs = pool.attributes || {};
+      const rel = pool.relationships || {};
+      const baseId = rel.base_token?.data?.id;
+      const base = included.get(baseId) || {};
+      const address = base.address || (baseId ? baseId.replace(/^token_/, "") : null);
+      if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) return null;
+      const volume = attrs.volume_usd || {};
+      const change = attrs.price_change_percentage || {};
+      return {
+        id: pool.id,
+        chain: "robinhood",
+        address,
+        name: base.name || String(attrs.name || "Unknown").split(" / ")[0],
+        symbol: base.symbol || "???",
+        price: Number(attrs.base_token_price_usd || 0),
+        marketCap: Number(attrs.market_cap_usd || attrs.fdv_usd || 0),
+        liquidity: Number(attrs.reserve_in_usd || 0),
+        volume1h: Number(volume.h1 || 0),
+        volume24h: Number(volume.h24 || 0),
+        change24h: Number(change.h24 || 0),
+        createdAt: attrs.pool_created_at || null,
+        logo: base.image_url || null,
+        image: base.image_url || null,
+        pairAddress: attrs.address || null,
+        pairUrl: `https://www.geckoterminal.com/robinhood/pools/${attrs.address || pool.id}`,
+        dexId: attrs.dex_id || null,
+        source: "GeckoTerminal",
+        protocol: attrs.dex_id || null,
+        holders: null,
+        holderSource: null
+      };
+    }).filter(Boolean);
+  } catch (error) {
+    console.warn("GeckoTerminal Robinhood discovery failed:", error?.message || error);
+    return [];
+  }
+}
+
 async function getRobinhoodTokens(profiles) {
   const selected = profiles
     .filter((token) => token.chainId === "robinhood" && token.tokenAddress)
     .slice(0, 80);
-  const pairs = await getTokenPairs("robinhood", selected.map((token) => token.tokenAddress));
-  return selected.map((profile) => toMarketToken(profile, bestPairForToken(pairs, profile.tokenAddress), "robinhood")).filter(Boolean);
+  const pairs = selected.length
+    ? await getTokenPairs("robinhood", selected.map((token) => token.tokenAddress))
+    : [];
+  const dexTokens = selected
+    .map((profile) => toMarketToken(profile, bestPairForToken(pairs, profile.tokenAddress), "robinhood"))
+    .filter(Boolean);
+  const geckoTokens = await getGeckoTerminalRobinhoodPools();
+
+  // Prefer the pair with the most useful liquidity/price data when the same
+  // contract is listed by both sources. Never fabricate missing prices or CA.
+  const byAddress = new Map();
+  for (const token of [...geckoTokens, ...dexTokens]) {
+    const key = String(token.address || "").toLowerCase();
+    if (!key) continue;
+    const existing = byAddress.get(key);
+    if (!existing || (Number(token.liquidity || 0) > Number(existing.liquidity || 0))) {
+      byAddress.set(key, { ...existing, ...token });
+    }
+  }
+  return [...byAddress.values()].sort((a, b) =>
+    new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+  );
 }
 
 export default async function handler(req, res) {
@@ -253,7 +332,7 @@ export default async function handler(req, res) {
       success: true,
       tokens,
       updatedAt: new Date().toISOString(),
-      source: "DexScreener",
+      source: chain === "robinhood" ? "GeckoTerminal + DexScreener" : "DexScreener",
       note: null,
       warnings: errors
     });

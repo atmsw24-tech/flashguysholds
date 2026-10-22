@@ -7,17 +7,22 @@ export default async function handler(req, res) {
 
   const address = req.query?.address;
   const chain = String(req.query?.chain || "sol").toLowerCase();
+  const timeframe = String(req.query?.timeframe || "5m").toLowerCase();
+  const tfMap = { "1m": {period:"minute",aggregate:1,limit:60}, "5m": {period:"minute",aggregate:5,limit:60}, "15m": {period:"minute",aggregate:15,limit:60}, "1h": {period:"hour",aggregate:1,limit:48}, "4h": {period:"hour",aggregate:4,limit:48}, "1d": {period:"day",aggregate:1,limit:30} };
+  const tf = tfMap[timeframe] || tfMap["5m"];
 
   if (!address || typeof address !== "string") {
     return res.status(400).json({ error: "Missing token address", history: [] });
   }
-  if (chain !== "sol" && chain !== "solana") {
-    return res.status(400).json({ error: "Charts currently support Solana tokens only.", history: [] });
+  if (!["sol","solana","robinhood"].includes(chain)) {
+    return res.status(400).json({ error: "Unsupported chart network.", history: [] });
   }
+  const network = chain === "robinhood" ? "robinhood" : "solana";
+  const dexChain = chain === "robinhood" ? "robinhood" : "solana";
 
   try {
     const pairResponse = await fetch(
-      `${DEX}/token-pairs/v1/solana/${encodeURIComponent(address)}`,
+      `${DEX}/token-pairs/v1/${dexChain}/${encodeURIComponent(address)}`,
       { headers: { Accept: "application/json" } }
     );
     if (!pairResponse.ok) {
@@ -40,7 +45,7 @@ export default async function handler(req, res) {
 
     try {
       const poolsResponse = await fetch(
-        `${GECKO}/networks/solana/tokens/${encodeURIComponent(address)}/pools`,
+        `${GECKO}/networks/${network}/tokens/${encodeURIComponent(address)}/pools`,
         { headers: { Accept: "application/json;version=20230302" } }
       );
 
@@ -51,7 +56,7 @@ export default async function handler(req, res) {
 
         if (poolAddress) {
           const candlesResponse = await fetch(
-            `${GECKO}/networks/solana/pools/${encodeURIComponent(poolAddress)}/ohlcv/hour?aggregate=1&limit=24&currency=usd`,
+            `${GECKO}/networks/${network}/pools/${encodeURIComponent(poolAddress)}/ohlcv/${tf.period}?aggregate=${tf.aggregate}&limit=${tf.limit}&currency=usd`,
             { headers: { Accept: "application/json;version=20230302" } }
           );
 
@@ -59,7 +64,7 @@ export default async function handler(req, res) {
             const candlesPayload = await candlesResponse.json();
             const rows = candlesPayload?.data?.attributes?.ohlcv_list;
             history = (Array.isArray(rows) ? rows : [])
-              .map((row) => ({ time: Number(row[0]) * 1000, price: Number(row[4]) }))
+              .map((row) => ({ time: Number(row[0]) * 1000, open: Number(row[1]), high: Number(row[2]), low: Number(row[3]), close: Number(row[4]), price: Number(row[4]) }))
               .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.price) && point.price > 0)
               .sort((a, b) => a.time - b.time);
           } else {
@@ -78,6 +83,8 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       address,
+      chain: network,
+      timeframe,
       price: Number(pair.priceUsd),
       pairUrl: pair.url || null,
       history,

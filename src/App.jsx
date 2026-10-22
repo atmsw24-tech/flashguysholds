@@ -261,8 +261,15 @@ function PriceChart({ token }) {
         const points=Array.isArray(data.history)?data.history.map(p=>({time:Number(p.time),open:Number(p.open??p.price),high:Number(p.high??p.price),low:Number(p.low??p.price),close:Number(p.close??p.price),price:Number(p.close??p.price),volume:Number(p.volume??0)})).filter(p=>p.time>0&&p.close>0):[];
         setHistory(previous=>{
           const merged=new Map(points.map(p=>[p.time,p]));
-          previous.slice(-8).forEach(p=>{if(!merged.has(p.time))merged.set(p.time,p)});
-          if(price>0&&!merged.size)merged.set(Date.now(),{time:Date.now(),open:price,high:price,low:price,close:price,price,volume:0});
+          previous.slice(-24).forEach(p=>{if(!merged.has(p.time))merged.set(p.time,p)});
+          // Record an actual observed provider price at refresh time when historical OHLC is unavailable.
+          // These are live samples, not invented historical candles.
+          if(price>0){
+            const now=Date.now();
+            const last=[...merged.values()].sort((x,y)=>x.time-y.time).slice(-1)[0];
+            const sample={time:now,open:last?.close??price,high:Math.max(last?.close??price,price),low:Math.min(last?.close??price,price),close:price,price,volume:0,sampled:true};
+            merged.set(now,sample);
+          }
           return [...merged.values()].sort((x,y)=>x.time-y.time).slice(-100);
         });
         setUpdatedAt(new Date());setChartError(data.historyWarning||"");
@@ -294,7 +301,7 @@ function PriceChart({ token }) {
       <div className="refined-chart-controls"><div className="gmgn-timeframes" role="group" aria-label="Chart timeframe">{timeframes.map(tf=><button key={tf.value} type="button" className={timeframe===tf.value?"active":""} onClick={()=>setTimeframe(tf.value)}>{tf.label}</button>)}</div><button type="button" className={showVolume?"refined-volume-toggle active":"refined-volume-toggle"} onClick={()=>setShowVolume(v=>!v)}>{showVolume?"Volume on":"Volume off"}</button></div>
     </div>
     <div className="refined-ohlc-strip">{active?<><span><i>O</i>{priceFmt(active.open??active.close)}</span><span><i>H</i>{priceFmt(active.high??active.close)}</span><span><i>L</i>{priceFmt(active.low??active.close)}</span><span><i>C</i>{priceFmt(active.close??active.price)}</span></>:<span>OHLC data appears when market candles are available</span>}</div>
-    {candles.length>=2?<div className="gmgn-candle-chart refined-candle-chart">
+    {candles.length>=1?<div className="gmgn-candle-chart refined-candle-chart">
       <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Candlestick price chart for ${token?.symbol||"token"}, ${timeframe} timeframe`} preserveAspectRatio="none">
         <defs><linearGradient id="refinedChartGlow" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#35d49a" stopOpacity=".13"/><stop offset="100%" stopColor="#35d49a" stopOpacity="0"/></linearGradient></defs>
         {[0,1,2,3,4].map(i=>{const yy=top+plotH*i/4,val=maxPrice-range*i/4;return <g key={i}><line x1={left} x2={width-right+3} y1={yy} y2={yy} stroke="#202936" strokeWidth="1"/><text x={width-right+10} y={yy+4} fill="#8490a0" fontSize="11">{priceFmt(val)}</text></g>})}
@@ -306,7 +313,7 @@ function PriceChart({ token }) {
       </svg>
       {hovered?<div className="gmgn-candle-tooltip refined-tooltip"><strong>{new Date(hovered.time).toLocaleString()}</strong><span>O {priceFmt(hovered.open??hovered.close)}</span><span>H {priceFmt(hovered.high??hovered.close)}</span><span>L {priceFmt(hovered.low??hovered.close)}</span><span>C {priceFmt(hovered.close??hovered.price)}</span></div>:null}
     </div>:<div className="gmgn-chart-placeholder refined-chart-placeholder"><div className="refined-placeholder-icon">⌁</div><strong>{chartLoading?"Loading market candles…":"Waiting for candle history"}</strong><span>{current>0?"Latest observed price "+formatPrice(current):"No market price is available yet."}</span></div>}
-    <div className="gmgn-chart-footer"><span>● OHLC candles · {timeframe}</span><span>{candles.length} candles {showVolume?"· Volume":" "}</span></div>
+    <div className="gmgn-chart-footer"><span>● OHLC candles · {timeframe}</span><span>{candles.filter(c=>!c.sampled).length} historical candles{candles.some(c=>c.sampled)?" · live price samples":""} {showVolume?"· Volume":" "}</span></div>
     {chartError?<div className="chart-empty">{chartError}</div>:null}
   </div>;
 }

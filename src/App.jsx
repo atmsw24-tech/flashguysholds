@@ -228,79 +228,65 @@ function PriceChart({ token }) {
   const [livePrice, setLivePrice] = useState(Number(token?.price || 0));
   const [updatedAt, setUpdatedAt] = useState(null);
   const [liveConnected, setLiveConnected] = useState(false);
+  const [timeframe, setTimeframe] = useState("5m");
+  const [hovered, setHovered] = useState(null);
+  const timeframes = [{label:"1m",value:"1m"},{label:"5m",value:"5m"},{label:"15m",value:"15m"},{label:"1H",value:"1h"},{label:"4H",value:"4h"},{label:"1D",value:"1d"}];
 
   useEffect(() => {
     let cancelled = false;
     let inFlight = false;
-    const mint = token?.address || token?.mint;
-    const isSolana = token?.chain === "solana" || token?.chain === "sol" || !token?.chain;
-
-    if (!mint || !isSolana) {
-      setHistory([]);
-      setChartLoading(false);
-      setLiveConnected(false);
-      setChartError(!mint ? "Token address is missing." : "Real-time trade chart is currently supported for Solana tokens only.");
-      return undefined;
+    const address = token?.address || token?.mint;
+    const chain = token?.chain === "robinhood" ? "robinhood" : "sol";
+    if (!address) {
+      setHistory([]); setChartLoading(false); setChartError("Token contract address is missing."); return undefined;
     }
-
     const appendPoint = (price, time = Date.now()) => {
       const value = Number(price);
       if (!(value > 0) || !Number.isFinite(value)) return;
       setLivePrice(value);
-      setHistory((previous) => {
-        const next = [...previous, { time: Number(time) || Date.now(), price: value }]
-          .filter((point) => Number.isFinite(point.time) && point.price > 0)
-          .sort((a, b) => a.time - b.time);
-        // Keep actual provider history plus recent real-time updates.
-        return next.slice(-180);
+      setHistory(previous => {
+        const next = [...previous, {time:Number(time)||Date.now(),open:value,high:value,low:value,close:value,price:value}];
+        return next.slice(-240);
       });
       setUpdatedAt(new Date());
       setChartError("");
     };
-
-    const handleLiveUpdate = (event) => {
+    const handleUpdate = event => {
       const update = event?.detail;
-      const updateMint = String(update?.mint || "").toLowerCase();
-      if (!updateMint || updateMint !== String(mint).toLowerCase()) return;
-      const price = Number(update.price);
-      if (price > 0) {
-        appendPoint(price, Number(update.timestamp) > 0
-          ? Number(update.timestamp) * 1000
-          : Date.now());
+      if (String(update?.mint || update?.address || "").toLowerCase() !== String(address).toLowerCase()) return;
+      if (Number(update?.price) > 0) {
+        appendPoint(update.price, Number(update.timestamp) > 0 ? (Number(update.timestamp) < 1e12 ? Number(update.timestamp)*1000 : Number(update.timestamp)) : Date.now());
         setLiveConnected(true);
       }
     };
-
-    window.addEventListener("flashguys:solana-update", handleLiveUpdate);
-    const subscribed = subscribeLiveToken(mint);
-    setLiveConnected(Boolean(subscribed));
-
-    async function loadInitialHistory() {
+    if (chain === "sol") {
+      window.addEventListener("flashguys:solana-update", handleUpdate);
+      setLiveConnected(Boolean(subscribeLiveToken(address)));
+    } else {
+      setLiveConnected(false);
+    }
+    async function load() {
       if (inFlight) return;
       inFlight = true;
       try {
-        const response = await fetch(
-          `/api/chart?address=${encodeURIComponent(mint)}&chain=sol&_=${Date.now()}`,
-          { cache: "no-store", headers: { Accept: "application/json" } }
-        );
+        const response = await fetch(`/api/chart?address=${encodeURIComponent(address)}&chain=${chain}&timeframe=${timeframe}&_=${Date.now()}`, {cache:"no-store",headers:{Accept:"application/json"}});
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Market data unavailable");
         if (cancelled) return;
-        const currentPrice = Number(data.price);
-        if (currentPrice > 0) setLivePrice(currentPrice);
-        const points = Array.isArray(data.history) ? data.history
-          .map((point) => ({ time: Number(point.time), price: Number(point.price) }))
-          .filter((point) => point.time > 0 && point.price > 0) : [];
-        setHistory((previous) => {
+        const price = Number(data.price);
+        if (price > 0) setLivePrice(price);
+        const points = Array.isArray(data.history) ? data.history.map(p => ({
+          time:Number(p.time),open:Number(p.open ?? p.price),high:Number(p.high ?? p.price),
+          low:Number(p.low ?? p.price),close:Number(p.close ?? p.price),price:Number(p.close ?? p.price)
+        })).filter(p => p.time > 0 && p.close > 0) : [];
+        setHistory(previous => {
           const merged = new Map();
-          [...points, ...previous].forEach((point) => merged.set(point.time, point));
-          // Add a timestamped sample of the latest provider price so the chart can move
-          // even when the websocket has no trade update for this token.
-          if (currentPrice > 0) merged.set(Date.now(), { time: Date.now(), price: currentPrice });
-          return [...merged.values()].sort((a, b) => a.time - b.time).slice(-180);
+          [...points,...previous.slice(-12)].forEach(p => merged.set(p.time,p));
+          if (price > 0 && !merged.size) merged.set(Date.now(),{time:Date.now(),open:price,high:price,low:price,close:price,price});
+          return [...merged.values()].sort((x,y)=>x.time-y.time).slice(-100);
         });
         setUpdatedAt(new Date());
-        if (data.historyWarning) setChartError(data.historyWarning);
+        setChartError(data.historyWarning || "");
       } catch (error) {
         if (!cancelled) setChartError(error?.message || "Could not load market data.");
       } finally {
@@ -308,76 +294,46 @@ function PriceChart({ token }) {
         if (!cancelled) setChartLoading(false);
       }
     }
-
-    loadInitialHistory();
-    // Fallback price refresh; the live socket above is the primary chart update source.
-    const fallback = setInterval(loadInitialHistory, 10000);
+    setChartLoading(true);
+    load();
+    const refresh = setInterval(load, 15000);
     return () => {
-      cancelled = true;
-      clearInterval(fallback);
-      window.removeEventListener("flashguys:solana-update", handleLiveUpdate);
+      cancelled = true; clearInterval(refresh);
+      if (chain === "sol") window.removeEventListener("flashguys:solana-update", handleUpdate);
     };
-  }, [token?.address, token?.mint, token?.chain]);
+  }, [token?.address, token?.mint, token?.chain, timeframe]);
 
-  const values = history
-    .map((item) => ({ time: Number(item?.time || Date.now()), price: Number(item?.price ?? item?.value ?? item) }))
-    .filter((point) => Number.isFinite(point.price) && point.price > 0);
-
-  if (values.length < 2) {
-    const current = Number(livePrice || token?.price || 0);
-    return (
-      <div>
-        {current > 0 ? (
-          <>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", marginBottom: "10px", fontSize: "12px" }}>
-              <strong>Latest observed price: {formatPrice(current)}</strong>
-              <span style={{ color: "#7b8493" }}>Waiting for price history</span>
-            </div>
-            <svg className="chart" viewBox="0 0 700 220" role="img" aria-label="Chart waiting for a second real price point">
-              <circle cx="350" cy="110" r="5" fill="currentColor" />
-            </svg>
-            <div className="chart-empty" style={{ height: "auto", minHeight: 32 }}>
-              {chartError || "The chart will draw as soon as a second real market price is received."}
-            </div>
-          </>
-        ) : (
-          <div className="chart-empty">
-            {chartLoading ? "Connecting to live market data..." : (chartError || "No live price data is available yet.")}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  const width = 700;
-  const height = 220;
-  const padding = 12;
-  const min = Math.min(...values.map((point) => point.price));
-  const max = Math.max(...values.map((point) => point.price));
-  const range = max - min || Math.max(max * 0.002, 0.000000001);
-  const points = values.map((point, index) => {
-    const x = padding + (index / Math.max(1, values.length - 1)) * (width - padding * 2);
-    const y = height - padding - ((point.price - min) / range) * (height - padding * 2);
-    return `${x},${y}`;
-  }).join(" ");
-
-  return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", marginBottom: "10px", fontSize: "12px" }}>
-        <strong>Live price: {formatPrice(livePrice)}</strong>
-        <span style={{ color: liveConnected ? "#16a34a" : "#7b8493" }}>
-          {liveConnected ? "LIVE FEED" : (updatedAt ? `Last update ${updatedAt.toLocaleTimeString()}` : "Connecting...")}
-        </span>
-      </div>
-      <svg className="chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Live Solana token price chart">
-        <polyline points={points} fill="none" stroke="currentColor" strokeWidth="3" vectorEffect="non-scaling-stroke" />
-      </svg>
-      <div style={{ fontSize: "11px", color: "#7b8493", marginTop: "6px" }}>
-        Updates from the live token feed when new market updates arrive.
-      </div>
-      {chartError ? <div className="chart-empty">{chartError}</div> : null}
+  const candles = history.filter(p => Number(p.close ?? p.price) > 0).slice(-80);
+  const width=760, height=300, left=12, right=72, top=18, bottom=30;
+  const plotW=width-left-right, plotH=height-top-bottom;
+  const lows=candles.map(p=>Number(p.low ?? p.close));
+  const highs=candles.map(p=>Number(p.high ?? p.close));
+  const current=Number(livePrice || token?.price || 0);
+  const minPrice=candles.length ? Math.min(...lows) : current*0.99;
+  const maxPrice=candles.length ? Math.max(...highs) : current*1.01;
+  const range=(maxPrice-minPrice)||Math.max(maxPrice*0.01,1e-12);
+  const y=v=>top+((maxPrice-v)/range)*plotH;
+  const step=plotW/Math.max(candles.length,1);
+  const candleWidth=Math.max(2,Math.min(9,step*0.64));
+  const priceFmt=v => v > 0 && v < 0.0001 ? v.toExponential(2) : v.toLocaleString(undefined,{maximumFractionDigits:6});
+  const xLabels=candles.length ? [candles[0],candles[Math.floor((candles.length-1)/2)],candles[candles.length-1]] : [];
+  return <div className="gmgn-chart-shell">
+    <div className="gmgn-chart-toolbar">
+      <div className="gmgn-live-price"><strong>{formatPrice(current)}</strong><span className={liveConnected ? "gmgn-live-indicator" : "gmgn-live-indicator is-muted"}>{liveConnected ? "● LIVE" : "● MARKET DATA"}</span></div>
+      <div className="gmgn-timeframes" role="group" aria-label="Chart timeframe">{timeframes.map(tf=><button key={tf.value} type="button" className={timeframe===tf.value?"active":""} onClick={()=>setTimeframe(tf.value)}>{tf.label}</button>)}</div>
     </div>
-  );
+    <div className="gmgn-chart-meta"><span>{token?.symbol ? "$"+token.symbol : "Token"} / USD</span><span>{updatedAt ? "Updated "+updatedAt.toLocaleTimeString() : "Connecting…"}</span></div>
+    {candles.length >= 2 ? <div className="gmgn-candle-chart">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Token candlestick price chart, ${timeframe} timeframe`} preserveAspectRatio="none">
+        {[0,1,2,3,4].map(i=>{const yy=top+(plotH*i/4);const val=maxPrice-(range*i/4);return <g key={i}><line x1={left} x2={width-right+4} y1={yy} y2={yy} stroke="rgba(148,163,184,.13)" strokeDasharray="3 4"/><text x={width-right+9} y={yy+4} fill="#8590a0" fontSize="10">{priceFmt(val)}</text></g>})}
+        {candles.map((c,i)=>{const open=Number(c.open??c.close),close=Number(c.close??c.price),high=Number(c.high??Math.max(open,close)),low=Number(c.low??Math.min(open,close));const xx=left+i*step+step/2;const up=close>=open;const color=up?"#35d49a":"#ff657a";const bodyY=Math.min(y(open),y(close));const bodyH=Math.max(1,Math.abs(y(open)-y(close)));return <g key={c.time+"-"+i} onMouseEnter={()=>setHovered(c)} onMouseLeave={()=>setHovered(null)}><rect x={xx-step/2} y={top} width={step} height={plotH} fill="transparent"/><line x1={xx} x2={xx} y1={y(high)} y2={y(low)} stroke={color} strokeWidth="1.2"/><rect x={xx-candleWidth/2} y={bodyY} width={candleWidth} height={bodyH} rx=".5" fill={color}/></g>})}
+        {xLabels.map((c,i)=><text key={i} x={left+(candles.findIndex(p=>p.time===c.time))*step+step/2} y={height-9} textAnchor={i===0?"start":i===2?"end":"middle"} fill="#8590a0" fontSize="10">{new Date(c.time).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</text>)}
+      </svg>
+      {hovered ? <div className="gmgn-candle-tooltip"><strong>{new Date(hovered.time).toLocaleString()}</strong><span>O {formatPrice(hovered.open??hovered.close)}</span><span>H {formatPrice(hovered.high??hovered.close)}</span><span>L {formatPrice(hovered.low??hovered.close)}</span><span>C {formatPrice(hovered.close??hovered.price)}</span></div> : null}
+    </div> : <div className="gmgn-chart-placeholder"><div className="gmgn-placeholder-line">⌁</div><strong>{chartLoading ? "Loading market candles…" : "Waiting for candle history"}</strong><span>{current>0 ? "Latest observed price: "+formatPrice(current) : "No market price is available yet."}</span></div>}
+    <div className="gmgn-chart-footer"><span>OHLC candlesticks · {timeframe}</span><span>{candles.length} candles</span></div>
+    {chartError ? <div className="chart-empty">{chartError}</div> : null}
+  </div>;
 }
 
 function TokenModal({ token, onClose }) {

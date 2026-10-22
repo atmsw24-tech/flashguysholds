@@ -260,17 +260,17 @@ function PriceChart({ token }) {
         const price=Number(data.price);if(price>0)setLivePrice(price);
         const points=Array.isArray(data.history)?data.history.map(p=>({time:Number(p.time),open:Number(p.open??p.price),high:Number(p.high??p.price),low:Number(p.low??p.price),close:Number(p.close??p.price),price:Number(p.close??p.price),volume:Number(p.volume??0)})).filter(p=>p.time>0&&p.close>0):[];
         setHistory(previous=>{
-          const merged=new Map(points.map(p=>[p.time,p]));
-          previous.slice(-24).forEach(p=>{if(!merged.has(p.time))merged.set(p.time,p)});
-          // Record an actual observed provider price at refresh time when historical OHLC is unavailable.
-          // These are live samples, not invented historical candles.
+          // Prefer real OHLC candles from the selected timeframe. Only keep sampled
+          // prices when the provider returned no candle history at all.
+          if(points.length) return points.slice(-60);
+          const prior=previous.filter(p=>p.sampled);
+          const now=Date.now();
+          const last=prior[prior.length-1];
           if(price>0){
-            const now=Date.now();
-            const last=[...merged.values()].sort((x,y)=>x.time-y.time).slice(-1)[0];
             const sample={time:now,open:last?.close??price,high:Math.max(last?.close??price,price),low:Math.min(last?.close??price,price),close:price,price,volume:0,sampled:true};
-            merged.set(now,sample);
+            return [...prior,sample].slice(-60);
           }
-          return [...merged.values()].sort((x,y)=>x.time-y.time).slice(-100);
+          return prior.slice(-60);
         });
         setUpdatedAt(new Date());setChartError(data.historyWarning||"");
       }catch(error){if(!cancelled)setChartError(error?.message||"Could not load market data.");}
@@ -280,20 +280,20 @@ function PriceChart({ token }) {
     return()=>{cancelled=true;clearInterval(refresh);if(chain==="sol")window.removeEventListener("flashguys:solana-update",handleUpdate)};
   },[token?.address,token?.mint,token?.chain,timeframe]);
 
-  const candles=history.filter(p=>Number(p.close??p.price)>0).slice(-70);
+  const candles=history.filter(p=>Number(p.close??p.price)>0).slice(-60);
   const width=920,height=390,left=16,right=86,top=22,bottom=42,volumeHeight=showVolume?68:0,gap=showVolume?12:0;
   const plotW=width-left-right,plotH=height-top-bottom-volumeHeight-gap;
   const lows=candles.map(p=>Number(p.low??p.close)),highs=candles.map(p=>Number(p.high??p.close));
   const current=Number(livePrice||token?.price||0);
   let minPrice=candles.length?Math.min(...lows):current*.99,maxPrice=candles.length?Math.max(...highs):current*1.01;
   if(maxPrice<=minPrice){const pad=Math.max(Math.abs(maxPrice)*.015,1e-12);minPrice-=pad;maxPrice+=pad;}
-  const pad=(maxPrice-minPrice)*.06;minPrice=Math.max(0,minPrice-pad);maxPrice+=pad;
+  const pad=(maxPrice-minPrice)*.10;minPrice=Math.max(0,minPrice-pad);maxPrice+=pad;
   const range=maxPrice-minPrice||1e-12,y=v=>top+((maxPrice-v)/range)*plotH,step=plotW/Math.max(candles.length,1);
   const candleWidth=Math.max(3,Math.min(10,step*.62));
   const priceFmt=v=>v>0&&v<.0001?v.toExponential(2):v.toLocaleString(undefined,{maximumFractionDigits:8});
   const volumes=candles.map(p=>Math.max(0,Number(p.volume||0))),maxVolume=Math.max(...volumes,1);
   const xLabels=candles.length?[candles[0],candles[Math.floor((candles.length-1)/2)],candles[candles.length-1]]:[];
-  const change=candles.length>1&&candles[0].close?((candles[candles.length-1].close-candles[0].open)/candles[0].open)*100:null;
+  const change=candles.length>1&&candles[0].close?((candles[candles.length-1].close-candles[0].close)/candles[0].close)*100:null;
   const active=hovered||candles[candles.length-1];
   return <div className="gmgn-chart-shell refined-chart">
     <div className="refined-chart-top">

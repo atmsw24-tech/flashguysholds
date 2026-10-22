@@ -1,6 +1,6 @@
 const DEX = "https://api.dexscreener.com";
 
-const ROBINHOOD_EXPLORER = "https://robinhoodchain.blockscout.com/api/v2";
+const ROBINHOOD_EXPLORER = "https://api.blockscout.com/4663/api/v2";
 
 // Optional persistent token cache. Vercel functions are ephemeral, so PostgreSQL
 // is the durable layer; API responses still work when DATABASE_URL is not set.
@@ -89,9 +89,9 @@ async function getRobinhoodIndexedContracts() {
     const payload = await response.json();
     const rows = Array.isArray(payload.items) ? payload.items : Array.isArray(payload) ? payload : [];
     return rows.map((item) => {
-      const address = item.address?.hash || item.address || item.token?.address?.hash;
+      const address = item.address_hash || item.address?.hash || item.address || item.token?.address?.hash;
       if (!address || !/^0x[a-fA-F0-9]{40}$/.test(String(address))) return null;
-      const created = item.timestamp || item.creation_tx_timestamp || item.created_at || null;
+      const created = item.timestamp || item.creation_tx_timestamp || item.created_at || item.token?.timestamp || null;
       return {
         id: String(address).toLowerCase(),
         chain: "robinhood",

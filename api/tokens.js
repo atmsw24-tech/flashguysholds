@@ -1,5 +1,164 @@
 const DEX = "https://api.dexscreener.com";
 
+const ROBINHOOD_EXPLORER = "https://robinhoodchain.blockscout.com/api/v2";
+
+// Optional persistent token cache. Vercel functions are ephemeral, so PostgreSQL
+// is the durable layer; API responses still work when DATABASE_URL is not set.
+let dbPoolPromise;
+async function getDbPool() {
+  if (!process.env.DATABASE_URL) return null;
+  if (!dbPoolPromise) {
+    dbPoolPromise = import("pg").then(({ Pool }) => new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.DATABASE_URL.includes("localhost") ? false : { rejectUnauthorized: false },
+      max: 3,
+      idleTimeoutMillis: 10000,
+      connectionTimeoutMillis: 4000
+    }));
+  }
+  return dbPoolPromise;
+}
+
+async function persistTokens(tokens) {
+  const pool = await getDbPool().catch(() => null);
+  if (!pool || !tokens.length) return;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS flashguys_token_cache (
+        chain text NOT NULL,
+        address text NOT NULL,
+        payload jsonb NOT NULL,
+        first_seen_at timestamptz NOT NULL DEFAULT now(),
+        last_seen_at timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (chain, address)
+      )
+    `);
+    for (const token of tokens) {
+      if (!token?.address || !["sol", "solana", "robinhood"].includes(token.chain)) continue;
+      await pool.query(
+        `INSERT INTO flashguys_token_cache (chain, address, payload, first_seen_at, last_seen_at)
+         VALUES ($1, $2, $3::jsonb, COALESCE(NULLIF($4, '')::timestamptz, now()), now())
+         ON CONFLICT (chain, address) DO UPDATE SET
+           payload = flashguys_token_cache.payload || EXCLUDED.payload,
+           last_seen_at = now()`,
+        [token.chain === "solana" ? "sol" : token.chain, String(token.address).toLowerCase(), JSON.stringify(token), token.createdAt ? new Date(token.createdAt).toISOString() : ""]
+      );
+    }
+  } catch (error) {
+    console.warn("FLASHGUYS token persistence unavailable:", error?.message || error);
+  }
+}
+
+async function readCachedTokens(chain, limit = 500) {
+  const pool = await getDbPool().catch(() => null);
+  if (!pool) return [];
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS flashguys_token_cache (
+        chain text NOT NULL,
+        address text NOT NULL,
+        payload jsonb NOT NULL,
+        first_seen_at timestamptz NOT NULL DEFAULT now(),
+        last_seen_at timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (chain, address)
+      )
+    `);
+    const params = chain === "all" ? [limit] : [chain, limit];
+    const result = chain === "all"
+      ? await pool.query("SELECT payload FROM flashguys_token_cache ORDER BY last_seen_at DESC LIMIT $1", params)
+      : await pool.query("SELECT payload FROM flashguys_token_cache WHERE chain = $1 ORDER BY last_seen_at DESC LIMIT $2", params);
+    return result.rows.map((row) => row.payload).filter(Boolean);
+  } catch (error) {
+    console.warn("FLASHGUYS cached-token read unavailable:", error?.message || error);
+    return [];
+  }
+}
+
+// Blockscout indexes ERC-20 contracts across Robinhood Chain, including tokens
+// that have not yet appeared in a DEX promotional profile feed. This is discovery
+// only: market figures remain null/zero until a market-data source reports them.
+async function getRobinhoodIndexedContracts() {
+  try {
+    const response = await fetch(`${ROBINHOOD_EXPLORER}/tokens?type=ERC-20`, {
+      headers: { accept: "application/json" }
+    });
+    if (!response.ok) {
+      console.warn(`Robinhood Blockscout token index returned ${response.status}`);
+      return [];
+    }
+    const payload = await response.json();
+    const rows = Array.isArray(payload.items) ? payload.items : Array.isArray(payload) ? payload : [];
+    return rows.map((item) => {
+      const address = item.address?.hash || item.address || item.token?.address?.hash;
+      if (!address || !/^0x[a-fA-F0-9]{40}$/.test(String(address))) return null;
+      const created = item.timestamp || item.creation_tx_timestamp || item.created_at || null;
+      return {
+        id: String(address).toLowerCase(),
+        chain: "robinhood",
+        address: String(address),
+        name: item.name || item.token?.name || "Unknown",
+        symbol: item.symbol || item.token?.symbol || "???",
+        price: Number(item.exchange_rate || item.token?.exchange_rate || 0),
+        marketCap: Number(item.circulating_market_cap || 0),
+        liquidity: 0,
+        volume1h: 0,
+        volume24h: 0,
+        change24h: 0,
+        createdAt: created,
+        logo: item.icon_url || item.token?.icon_url || null,
+        image: item.icon_url || item.token?.icon_url || null,
+        pairAddress: null,
+        pairUrl: `https://robinhoodchain.blockscout.com/token/${address}`,
+        source: "Robinhood Chain Blockscout ERC-20 index",
+        protocol: null,
+        holders: Number.isFinite(Number(item.holders)) && item.holders !== null ? Number(item.holders) : null,
+        holderSource: item.holders != null ? "Blockscout" : null,
+        marketDataAvailable: false
+      };
+    }).filter(Boolean);
+  } catch (error) {
+    console.warn("Robinhood Blockscout token discovery failed:", error?.message || error);
+    return [];
+  }
+}
+
+function mergeTokenLists(...lists) {
+  const merged = new Map();
+  for (const token of lists.flat()) {
+    const address = String(token?.address || "").trim();
+    if (!address) continue;
+    const chain = token.chain === "solana" ? "sol" : token.chain;
+    const key = `${chain}:${address.toLowerCase()}`;
+    const old = merged.get(key);
+    if (!old) {
+      merged.set(key, { ...token, chain, address });
+      continue;
+    }
+    // Keep the richest recent live-market record while retaining cached metadata.
+    const newer = new Date(token.createdAt || 0).getTime() >= new Date(old.createdAt || 0).getTime();
+    const preferred = Number(token.liquidity || 0) >= Number(old.liquidity || 0) ? token : old;
+    merged.set(key, {
+      ...old, ...token, ...preferred,
+      chain, address,
+      name: token.name && token.name !== "Unknown" ? token.name : old.name,
+      symbol: token.symbol && token.symbol !== "???" ? token.symbol : old.symbol,
+      logo: token.logo || token.image || old.logo || old.image || null,
+      image: token.image || token.logo || old.image || old.logo || null,
+      pairUrl: token.pairUrl || old.pairUrl || null,
+      pairAddress: token.pairAddress || old.pairAddress || null,
+      createdAt: newer ? (token.createdAt || old.createdAt) : (old.createdAt || token.createdAt),
+      holders: token.holders ?? old.holders ?? null,
+      holderSource: token.holderSource || old.holderSource || null,
+      marketDataAvailable: token.marketDataAvailable === false && Number(old.liquidity || 0) > 0
+        ? true : token.marketDataAvailable
+    });
+  }
+  return [...merged.values()].sort((a, b) =>
+    new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+  );
+}
+
+
 function send(res, status, body) {
   return res.status(status).json(body);
 }
@@ -263,7 +422,7 @@ async function getSolanaTokens(profiles) {
     .map((token) => ({ ...token, protocol: "PUMPFUN/PUMPSWAP", source: "DexScreener" }));
 
   const byAddress = new Map();
-  for (const token of [...geckoTokens, ...dexTokens]) {
+  for (const token of [...indexedTokens, ...geckoTokens, ...dexTokens]) {
     const key = String(token.address || "").toLowerCase();
     if (!key) continue;
     const existing = byAddress.get(key);
@@ -354,7 +513,7 @@ async function getRobinhoodTokens(profiles) {
   const dexTokens = selected
     .map((profile) => toMarketToken(profile, bestPairForToken(pairs, profile.tokenAddress), "robinhood"))
     .filter(Boolean);
-  const geckoTokens = await getGeckoTerminalRobinhoodPools();
+  const [geckoTokens, indexedTokens] = await Promise.all([getGeckoTerminalRobinhoodPools(), getRobinhoodIndexedContracts()]);
 
   // Prefer the pair with the most useful liquidity/price data when the same
   // contract is listed by both sources. Never fabricate missing prices or CA.

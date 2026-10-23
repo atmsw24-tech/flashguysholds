@@ -338,6 +338,63 @@ function PriceChart({ token }) {
   </div>;
 }
 
+
+function TokenXFeed({ token }) {
+  const [posts, setPosts] = useState([]);
+  const [status, setStatus] = useState("loading");
+  const [message, setMessage] = useState("");
+  const address = String(token?.address || token?.mint || "").trim();
+  const symbol = String(token?.symbol || "").trim();
+  const name = String(token?.name || "").trim();
+
+  useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+    const terms = [];
+    if (symbol) terms.push("$" + symbol);
+    if (name && name.toLowerCase() !== symbol.toLowerCase()) terms.push('"' + name.replace(/"/g, "") + '"');
+    if (address) terms.push('"' + address + '"');
+    if (!terms.length) {
+      setStatus("error");
+      setMessage("No token name, symbol, or contract address is available for X search.");
+      return undefined;
+    }
+    async function load() {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const response = await fetch("/api/search?social=1&q=" + encodeURIComponent(terms.join(" OR ")), { cache: "no-store" });
+        const data = await response.json();
+        if (cancelled) return;
+        if (!response.ok || !data.success) throw new Error(data.error || "X posts could not be loaded.");
+        setPosts(Array.isArray(data.posts) ? data.posts : []);
+        setStatus("ready");
+        setMessage("");
+      } catch (error) {
+        if (!cancelled) { setStatus("error"); setMessage(error?.message || "X posts could not be loaded."); }
+      } finally { inFlight = false; }
+    }
+    setStatus("loading");
+    load();
+    const interval = window.setInterval(load, 60000);
+    return () => { cancelled = true; window.clearInterval(interval); };
+  }, [address, symbol, name]);
+
+  return <section className="token-x-feed" aria-label="X posts about selected token">
+    <div className="token-x-feed-head"><div><span className="token-x-eyebrow">SOCIAL RADAR</span><h3><span className="token-x-mark">𝕏</span> X Feed <span className="token-x-context">for {symbol ? "$" + symbol : name || "this token"}</span></h3></div><span className="token-x-refresh">Auto-refresh · 60s</span></div>
+    {status === "loading" ? <p className="token-x-state">Searching recent X posts for this token…</p> : null}
+    {status === "error" ? <p className="token-x-state token-x-error">{message}</p> : null}
+    {status === "ready" && posts.length === 0 ? <p className="token-x-state">No matching recent public posts found. This does not mean nobody is discussing the token.</p> : null}
+    {status === "ready" && posts.length ? <div className="token-x-posts">{posts.map(post => <article className="token-x-post" key={post.id}>
+      <div className="token-x-post-meta"><strong>{post.author}</strong>{post.username ? <span>@{post.username}</span> : null}{post.verified ? <span className="token-x-verified">✓</span> : null}<time>{post.createdAt ? new Date(post.createdAt).toLocaleString() : ""}</time></div>
+      <p>{post.text}</p>
+      <div className="token-x-post-foot"><span>♥ {Number(post.metrics?.like_count || 0).toLocaleString()}</span><span>↻ {Number(post.metrics?.retweet_count || 0).toLocaleString()}</span><span>💬 {Number(post.metrics?.reply_count || 0).toLocaleString()}</span><a href={post.url} target="_blank" rel="noreferrer">View on X ↗</a></div>
+    </article>)}</div> : null}
+    {status === "error" && message.toLowerCase().includes("not configured") ? <p className="token-x-setup">Add X_BEARER_TOKEN in Vercel Environment Variables using an X API bearer token with recent-search access, then redeploy.</p> : null}
+    <p className="token-x-disclaimer">Recent public X search results, not a complete feed. Availability depends on X API access and search indexing.</p>
+  </section>;
+}
+
 function TokenModal({ token, onClose }) {
   if (!token) return null;
 
@@ -527,6 +584,8 @@ function TokenModal({ token, onClose }) {
               ) : <p className="activity-unavailable">Individual trade records are not included in the current token-feed response. Summary buy/sell counts above are shown only when reported by the market-data source.</p>}
             </div>
           </section>
+
+          <TokenXFeed token={token} />
 
           <section className="token-extra-details" style={{ marginTop: 18 }}>
             <h3>Token Details</h3>

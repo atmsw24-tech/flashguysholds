@@ -27,10 +27,6 @@ export default async function handler(req, res) {
       `${DEX}/token-pairs/v1/${dexChain}/${encodeURIComponent(address)}`,
       { headers: { Accept: "application/json" } }
     );
-    if (!pairResponse.ok) {
-      return res.status(502).json({ error: `Market provider returned ${pairResponse.status}`, history: [] });
-    }
-
     const pairs = pairResponse.ok ? await pairResponse.json() : [];
     const pair = (Array.isArray(pairs) ? pairs : [])
       .filter((p) => Number(p.priceUsd) > 0)

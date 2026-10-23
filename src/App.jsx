@@ -273,7 +273,27 @@ function PriceChart({ token }) {
           return prior.slice(-60);
         });
         setUpdatedAt(new Date());setChartError(data.historyWarning||"");
-      }catch(error){if(!cancelled)setChartError(error?.message||"Could not load market data.");}
+      }catch(error){
+        if(!cancelled){
+          // A market-history API failure must not leave the chart blank when the
+          // token feed already has a verified latest price.
+          const fallbackPrice=Number(token?.price||livePrice||0);
+          if(fallbackPrice>0){
+            setLivePrice(fallbackPrice);
+            setHistory(previous=>{
+              const prior=previous.filter(point=>point.sampled);
+              const now=Date.now();
+              const last=prior[prior.length-1];
+              if(last&&now-last.time<5000)return prior;
+              const sample={time:now,open:last?.close??fallbackPrice,high:Math.max(last?.close??fallbackPrice,fallbackPrice),low:Math.min(last?.close??fallbackPrice,fallbackPrice),close:fallbackPrice,price:fallbackPrice,volume:0,sampled:true};
+              return [...prior,sample].slice(-60);
+            });
+            setChartError("Historical candles unavailable; displaying observed token-feed prices.");
+          }else{
+            setChartError(error?.message||"No market price is available for this token yet.");
+          }
+        }
+      }
       finally{inFlight=false;if(!cancelled)setChartLoading(false);}
     }
     setChartLoading(true);load();const refresh=setInterval(load,15000);

@@ -260,17 +260,22 @@ function PriceChart({ token }) {
         const price=Number(data.price);if(price>0)setLivePrice(price);
         const points=Array.isArray(data.history)?data.history.map(p=>({time:Number(p.time),open:Number(p.open??p.price),high:Number(p.high??p.price),low:Number(p.low??p.price),close:Number(p.close??p.price),price:Number(p.close??p.price),volume:Number(p.volume??0)})).filter(p=>p.time>0&&p.close>0):[];
         setHistory(previous=>{
-          // Prefer real OHLC candles from the selected timeframe. Only keep sampled
-          // prices when the provider returned no candle history at all.
-          if(points.length) return points.slice(-60);
-          const prior=previous.filter(p=>p.sampled||p.observed);
+          const priorSamples=previous.filter(p=>p.sampled||p.observed);
           const now=Date.now();
-          const last=prior[prior.length-1];
-          if(price>0){
-            const sample={time:now,open:last?.close??price,high:Math.max(last?.close??price,price),low:Math.min(last?.close??price,price),close:price,price,volume:0,sampled:true};
-            return [...prior,sample].slice(-60);
+          const lastSample=priorSamples[priorSamples.length-1];
+          const nextPrice=price>0?price:Number(token?.price||0);
+          const nextSample=nextPrice>0&&(!lastSample||now-lastSample.time>=4000)?{
+            time:now,open:lastSample?.close??nextPrice,
+            high:Math.max(lastSample?.close??nextPrice,nextPrice),
+            low:Math.min(lastSample?.close??nextPrice,nextPrice),
+            close:nextPrice,price:nextPrice,volume:0,sampled:true
+          }:null;
+          const samples=nextSample?[...priorSamples,nextSample].slice(-240):priorSamples.slice(-240);
+          if(points.length){
+            return [...points,...samples.filter(sample=>sample.time>=(points[points.length-1]?.time||0))]
+              .sort((a,b)=>a.time-b.time).slice(-120);
           }
-          return prior.slice(-60);
+          return samples.slice(-120);
         });
         setUpdatedAt(new Date());setChartError(data.historyWarning||"");
       }catch(error){
@@ -296,7 +301,7 @@ function PriceChart({ token }) {
       }
       finally{inFlight=false;if(!cancelled)setChartLoading(false);}
     }
-    setChartLoading(true);load();const refresh=setInterval(load,15000);
+    setChartLoading(true);load();const refresh=setInterval(load,5000);
     return()=>{cancelled=true;clearInterval(refresh);if(chain==="sol")window.removeEventListener("flashguys:solana-update",handleUpdate)};
   },[token?.address,token?.mint,token?.chain,timeframe]);
 

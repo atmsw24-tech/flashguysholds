@@ -41,7 +41,7 @@ async function persistTokens(tokens) {
          ON CONFLICT (chain, address) DO UPDATE SET
            payload = flashguys_token_cache.payload || EXCLUDED.payload,
            last_seen_at = now()`,
-        [token.chain === "solana" ? "sol" : token.chain, String(token.address).toLowerCase(), JSON.stringify(token), token.createdAt ? new Date(token.createdAt).toISOString() : ""]
+        [token.chain === "solana" ? "sol" : token.chain, (token.chain === "sol" || token.chain === "solana") ? String(token.address) : String(token.address).toLowerCase(), JSON.stringify(token), token.createdAt ? new Date(token.createdAt).toISOString() : ""]
       );
     }
   } catch (error) {
@@ -576,10 +576,19 @@ export default async function handler(req, res) {
       chain === "sol" ? Promise.resolve([]) : getRobinhoodTokens(profiles)
     ]);
 
-    const tokens = await addHolderCounts([
+    const liveTokens = await addHolderCounts([
       ...(solanaResult.status === "fulfilled" ? solanaResult.value : []),
       ...(robinhoodResult.status === "fulfilled" ? robinhoodResult.value : [])
     ]);
+
+    // Persist each live refresh when DATABASE_URL is configured, then merge
+    // previously discovered contracts so temporary provider gaps don't erase launches.
+    await persistTokens(liveTokens);
+    const cachedTokens = await readCachedTokens(chain, 500);
+    const tokens = mergeTokenLists(
+      liveTokens,
+      cachedTokens.filter((token) => chain === "all" || (chain === "sol" ? token.chain === "sol" || token.chain === "solana" : token.chain === "robinhood"))
+    );
 
     const errors = [];
     if (solanaResult.status === "rejected") errors.push("Solana feed temporarily unavailable");
@@ -593,7 +602,7 @@ export default async function handler(req, res) {
       success: true,
       tokens,
       updatedAt: new Date().toISOString(),
-      source: chain === "robinhood" ? "GeckoTerminal + DexScreener" : "DexScreener",
+      source: chain === "robinhood" ? "Blockscout + GeckoTerminal + DexScreener" : chain === "sol" ? "GeckoTerminal + DexScreener" : "Blockscout + GeckoTerminal + DexScreener",
       note: null,
       warnings: errors
     });

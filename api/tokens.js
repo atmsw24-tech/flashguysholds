@@ -422,7 +422,7 @@ async function getSolanaTokens(profiles) {
     .map((token) => ({ ...token, protocol: "PUMPFUN/PUMPSWAP", source: "DexScreener" }));
 
   const byAddress = new Map();
-  for (const token of [...indexedTokens, ...geckoTokens, ...dexTokens]) {
+  for (const token of [...geckoTokens, ...dexTokens]) {
     const key = String(token.address || "").toLowerCase();
     if (!key) continue;
     const existing = byAddress.get(key);
@@ -518,13 +518,29 @@ async function getRobinhoodTokens(profiles) {
   // Prefer the pair with the most useful liquidity/price data when the same
   // contract is listed by both sources. Never fabricate missing prices or CA.
   const byAddress = new Map();
-  for (const token of [...geckoTokens, ...dexTokens]) {
+  for (const token of [...indexedTokens, ...geckoTokens, ...dexTokens]) {
     const key = String(token.address || "").toLowerCase();
     if (!key) continue;
     const existing = byAddress.get(key);
-    if (!existing || (Number(token.liquidity || 0) > Number(existing.liquidity || 0))) {
-      byAddress.set(key, { ...existing, ...token });
+    if (!existing) {
+      byAddress.set(key, token);
+      continue;
     }
+    // Keep the live market record when available, while retaining indexed contracts
+    // even when they have not formed a tracked liquidity pool yet.
+    const preferred = Number(token.liquidity || 0) > Number(existing.liquidity || 0) ? token : existing;
+    byAddress.set(key, {
+      ...existing, ...token, ...preferred,
+      name: token.name && token.name !== "Unknown" ? token.name : existing.name,
+      symbol: token.symbol && token.symbol !== "???" ? token.symbol : existing.symbol,
+      logo: token.logo || token.image || existing.logo || existing.image || null,
+      image: token.image || token.logo || existing.image || existing.logo || null,
+      pairUrl: token.pairUrl || existing.pairUrl || null,
+      pairAddress: token.pairAddress || existing.pairAddress || null,
+      holders: token.holders ?? existing.holders ?? null,
+      holderSource: token.holderSource || existing.holderSource || null,
+      marketDataAvailable: Number(preferred.liquidity || 0) > 0 || Number(preferred.price || 0) > 0
+    });
   }
   return [...byAddress.values()].sort((a, b) =>
     new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()

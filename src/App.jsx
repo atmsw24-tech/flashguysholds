@@ -222,7 +222,7 @@ function TokenRow({ token, onClick, watched, onToggleWatch }) {
 }
 
 function PriceChart({ token }) {
-  const [history,setHistory]=useState([]);
+  const [history,setHistory]=useState(()=>Array.isArray(token?.priceHistory)?token.priceHistory.map(point=>({time:Number(point.time),open:Number(point.open??point.price),high:Number(point.high??point.price),low:Number(point.low??point.price),close:Number(point.close??point.price),price:Number(point.price??point.close),volume:0,sampled:true})).filter(point=>point.time>0&&point.close>0).slice(-60):[]);
   const [chartError,setChartError]=useState("");
   const [chartLoading,setChartLoading]=useState(true);
   const [livePrice,setLivePrice]=useState(Number(token?.price||0));
@@ -248,7 +248,7 @@ function PriceChart({ token }) {
       setHistory(previous=>{
         const last=previous[previous.length-1];
         if(last&&time-last.time<1000)return [...previous.slice(0,-1),{...last,high:Math.max(last.high,value),low:Math.min(last.low,value),close:value,price:value}];
-        return [...previous,{time,open:last?.close??value,high:Math.max(last?.close??value,value),low:Math.min(last?.close??value,value),close:value,price:value,volume:0}].slice(-240);
+        return [...previous,{time,open:last?.close??value,high:Math.max(last?.close??value,value),low:Math.min(last?.close??value,value),close:value,price:value,volume:0,sampled:true}].slice(-240);
       });
     };
     if(chain==="sol")window.addEventListener("flashguys:solana-update",handleUpdate);
@@ -263,7 +263,7 @@ function PriceChart({ token }) {
           // Prefer real OHLC candles from the selected timeframe. Only keep sampled
           // prices when the provider returned no candle history at all.
           if(points.length) return points.slice(-60);
-          const prior=previous.filter(p=>p.sampled);
+          const prior=previous.filter(p=>p.sampled||p.observed);
           const now=Date.now();
           const last=prior[prior.length-1];
           if(price>0){

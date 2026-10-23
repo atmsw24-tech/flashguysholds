@@ -255,7 +255,7 @@ function PriceChart({ token }) {
     async function load(){
       if(inFlight)return;inFlight=true;
       try{
-        const response=await fetch(`/api/chart?address=${encodeURIComponent(address)}&chain=${chain}&timeframe=${timeframe}&_=${Date.now()}`,{cache:"no-store",headers:{Accept:"application/json"}});
+        const response=await fetch(`/api/chart?address=${encodeURIComponent(address)}&chain=${chain}&timeframe=${timeframe}&fallbackPrice=${encodeURIComponent(Number(token?.price||livePrice||0))}&pairAddress=${encodeURIComponent(token?.pairAddress||"")}&_=${Date.now()}`,{cache:"no-store",headers:{Accept:"application/json"}});
         const data=await response.json();if(!response.ok)throw new Error(data.error||"Market data unavailable");if(cancelled)return;
         const price=Number(data.price);if(price>0)setLivePrice(price);
         const points=Array.isArray(data.history)?data.history.map(p=>({time:Number(p.time),open:Number(p.open??p.price),high:Number(p.high??p.price),low:Number(p.low??p.price),close:Number(p.close??p.price),price:Number(p.close??p.price),volume:Number(p.volume??0)})).filter(p=>p.time>0&&p.close>0):[];

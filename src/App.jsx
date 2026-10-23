@@ -965,7 +965,7 @@ export default function App() {
             F
           </span>
 
-          FLASHBOYS
+          <span className="header-brand-text">FLASHBOYS</span>
         </button>
 
         <nav className="nav">

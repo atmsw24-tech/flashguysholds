@@ -159,20 +159,14 @@ function TokenRow({ token, onClick, watched, onToggleWatch }) {
         <div className="token-name">
           <TokenLogo token={token} />
 
-          <div>
-            <strong>
-              {token.name || "Unknown Token"}
-            </strong>
-
-            <div className="token-symbol">
-              ${token.symbol || "UNKNOWN"}
+          <div className="token-name-details">
+            <div className="token-title-line">
+              <strong>{token.name || "Unknown Token"}</strong>
+              <span className="token-inline-mcap">{Number(token.marketCap) > 0 ? formatNumber(token.marketCap) : "MCAP N/A"}</span>
             </div>
+            <div className="token-symbol">${token.symbol || "UNKNOWN"}</div>
           </div>
         </div>
-      </td>
-
-      <td className="mcap-first-cell" style={{ fontWeight: 800, color: "#c084fc", whiteSpace: "nowrap" }}>
-        {Number(token.marketCap) > 0 ? formatNumber(token.marketCap) : "N/A"}
       </td>
 
       <td>

@@ -6,6 +6,8 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
 
   const address = req.query?.address;
+  const fallbackPrice = Number(req.query?.fallbackPrice || 0);
+  const fallbackPairAddress = String(req.query?.pairAddress || "");
   const chain = String(req.query?.chain || "sol").toLowerCase();
   const timeframe = String(req.query?.timeframe || "5m").toLowerCase();
   const tfMap = { "1m": {period:"minute",aggregate:1,limit:60}, "5m": {period:"minute",aggregate:5,limit:60}, "15m": {period:"minute",aggregate:15,limit:60}, "1h": {period:"hour",aggregate:1,limit:48}, "4h": {period:"hour",aggregate:4,limit:48}, "1d": {period:"day",aggregate:1,limit:30} };
@@ -29,13 +31,23 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: `Market provider returned ${pairResponse.status}`, history: [] });
     }
 
-    const pairs = await pairResponse.json();
+    const pairs = pairResponse.ok ? await pairResponse.json() : [];
     const pair = (Array.isArray(pairs) ? pairs : [])
       .filter((p) => Number(p.priceUsd) > 0)
       .sort((a, b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0))[0];
 
+    // If DexScreener has no pair for this token, preserve the verified latest
+    // price already supplied by the token feed rather than returning a blank chart.
     if (!pair) {
-      return res.status(404).json({ error: "No priced market pair found for this token.", history: [] });
+      if (fallbackPrice > 0) {
+        return res.status(200).json({
+          address, chain: network, timeframe, price: fallbackPrice,
+          pairUrl: null, history: [],
+          historyWarning: "Historical market candles are unavailable. Collecting observed prices from the token feed.",
+          updatedAt: new Date().toISOString()
+        });
+      }
+      return res.status(404).json({ error: "No priced market pair or token-feed price is available yet.", history: [] });
     }
 
     // Always return the latest market price. Historical candles are an enhancement,

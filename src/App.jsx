@@ -171,16 +171,16 @@ function TokenRow({ token, onClick, watched, onToggleWatch }) {
         </div>
       </td>
 
+      <td className="mcap-first-cell" style={{ fontWeight: 800, color: "#c084fc", whiteSpace: "nowrap" }}>
+        {Number(token.marketCap) > 0 ? formatNumber(token.marketCap) : "N/A"}
+      </td>
+
       <td>
         <span className="chain-badge">
           {token.chain === "robinhood"
             ? "Robinhood"
             : "Solana"}
         </span>
-      </td>
-
-      <td className="mcap-first-cell" style={{ fontWeight: 800, color: "#c084fc", whiteSpace: "nowrap" }}>
-        {formatNumber(token.marketCap)}
       </td>
 
       <td>
@@ -1168,8 +1168,8 @@ export default function App() {
                   <thead>
                     <tr>
                       <th>Token</th>
-                      <th>Chain</th>
                       <th>MCAP</th>
+                      <th>Chain</th>
                       <th>Contract Address</th>
                       <th>Price</th>
                       <th>Chart</th>

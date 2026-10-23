@@ -1172,3 +1172,12 @@ html, body, #root {
 .header > .logo:hover .header-brand-text {
   filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.45));
 }
+
+
+/* Compact horizontal token + market-cap layout */
+.token-name-details{min-width:0;display:flex;flex-direction:column;gap:4px}
+.token-title-line{display:flex;align-items:center;gap:10px;min-width:0;white-space:nowrap}
+.token-title-line strong{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.token-inline-mcap{display:inline-flex;align-items:center;flex-shrink:0;padding:4px 7px;border:1px solid rgba(168,85,247,.32);border-radius:6px;background:rgba(168,85,247,.12);color:#d8b4fe;font-size:11px;font-weight:850;letter-spacing:.01em;line-height:1.1}
+.token-name{min-width:220px}
+@media(max-width:700px){.token-title-line{gap:6px}.token-inline-mcap{font-size:10px;padding:3px 5px}.token-name{min-width:190px}}

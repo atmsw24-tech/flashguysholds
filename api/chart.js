@@ -35,11 +35,33 @@ export default async function handler(req, res) {
     // If DexScreener has no pair for this token, preserve the verified latest
     // price already supplied by the token feed rather than returning a blank chart.
     if (!pair) {
-      if (fallbackPrice > 0) {
+      // Try GeckoTerminal independently: some new pools are indexed there before
+      // DexScreener exposes a token pair, especially on newly supported networks.
+      let geckoPrice = 0;
+      try {
+        const fallbackPoolsResponse = await fetch(
+          `${GECKO}/networks/${network}/tokens/${encodeURIComponent(address)}/pools`,
+          { headers: { Accept: "application/json;version=20230302" } }
+        );
+        if (fallbackPoolsResponse.ok) {
+          const fallbackPoolsPayload = await fallbackPoolsResponse.json();
+          const rows = Array.isArray(fallbackPoolsPayload?.data) ? fallbackPoolsPayload.data : [];
+          const matchingPool = rows.find((row) => {
+            const baseId = row?.relationships?.base_token?.data?.id || "";
+            return baseId.replace(/^token_/, "").toLowerCase() === address.toLowerCase()
+              && Number(row?.attributes?.base_token_price_usd) > 0;
+          });
+          geckoPrice = Number(matchingPool?.attributes?.base_token_price_usd || 0);
+        }
+      } catch (fallbackError) {
+        console.warn("Fallback chart price lookup failed:", fallbackError?.message || fallbackError);
+      }
+      const availablePrice = geckoPrice > 0 ? geckoPrice : fallbackPrice;
+      if (availablePrice > 0) {
         return res.status(200).json({
-          address, chain: network, timeframe, price: fallbackPrice,
+          address, chain: network, timeframe, price: availablePrice,
           pairUrl: null, history: [],
-          historyWarning: "Historical market candles are unavailable. Collecting observed prices from the token feed.",
+          historyWarning: "Historical candles are not available for this market yet. Collecting observed prices from live market data.",
           updatedAt: new Date().toISOString()
         });
       }

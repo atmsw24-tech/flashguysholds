@@ -1155,3 +1155,20 @@ html, body, #root {
 .refined-chart-placeholder{border:1px solid #1b2430;background:linear-gradient(180deg,#0a0f15,#090d12)}.refined-placeholder-icon{font-size:42px;color:#39d7a0;opacity:.75}
 .refined-chart .gmgn-chart-footer{padding:2px 1px 0;color:#647184}.refined-chart .chart-empty{margin-top:8px;font-size:11px;color:#8c98a8}
 @media(max-width:620px){.refined-chart{padding:11px 9px}.refined-chart-top{gap:12px}.refined-chart-controls{width:100%;align-items:flex-start}.refined-chart-controls .gmgn-timeframes{max-width:100%;flex-wrap:wrap}.refined-price-line strong{font-size:23px}.refined-candle-chart svg{min-height:235px}.refined-ohlc-strip{gap:9px;font-size:9px}}
+
+
+/* Header wordmark: purple neon gradient to match the updated theme */
+.header-brand-text {
+  display: inline-block;
+  color: #c084fc;
+  background: linear-gradient(100deg, #e9d5ff 0%, #c084fc 38%, #a855f7 68%, #7e22ce 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 22px rgba(168, 85, 247, 0.12);
+  letter-spacing: -0.04em;
+  transition: filter 180ms ease;
+}
+.header > .logo:hover .header-brand-text {
+  filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.45));
+}

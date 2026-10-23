@@ -128,7 +128,7 @@ function mergeTokenLists(...lists) {
     const address = String(token?.address || "").trim();
     if (!address) continue;
     const chain = token.chain === "solana" ? "sol" : token.chain;
-    const key = `${chain}:${address.toLowerCase()}`;
+    const key = `${chain}:${chain === "sol" ? address : address.toLowerCase()}`;
     const old = merged.get(key);
     if (!old) {
       merged.set(key, { ...token, chain, address });
@@ -291,8 +291,15 @@ async function addHolderCounts(tokens) {
   const workers = Array.from({ length: Math.min(5, candidates.length) }, async () => {
     while (cursor < candidates.length) {
       const token = candidates[cursor++];
-      token.holders = await getHolderCount(token);
-      token.holderSource = token.holders !== null ? "Birdeye indexed data" : null;
+      const indexedCount = await getHolderCount(token);
+      // Do not erase a valid count already supplied by another chain indexer.
+      if (indexedCount !== null) {
+        token.holders = indexedCount;
+        token.holderSource = "Birdeye indexed data";
+      } else if (token.holders == null) {
+        token.holders = null;
+        token.holderSource = null;
+      }
     }
   });
   await Promise.all(workers);

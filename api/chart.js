@@ -13,7 +13,7 @@ const TIMEFRAMES = {
 
 function tokenAddressFromPool(pool, side) {
   const id = pool?.relationships?.[side + "_token"]?.data?.id || "";
-  return String(id).replace(/^token_/, "").toLowerCase();
+  return String(id).replace(/^(?:token_|solana_|robinhood_)/i, "").toLowerCase();
 }
 
 function poolLiquidity(pool) {

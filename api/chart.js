@@ -142,6 +142,8 @@ export default async function handler(req, res) {
       chain: network,
       timeframe,
       price,
+      marketCap: Number(pair?.marketCap || pair?.fdv || 0),
+      marketCapEstimated: !Number(pair?.marketCap || 0) && Number(pair?.fdv || 0) > 0,
       pairUrl: pair?.url || null,
       pairAddress: pair?.pairAddress || poolAddress || null,
       history,

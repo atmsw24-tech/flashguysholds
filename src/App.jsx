@@ -1040,8 +1040,12 @@ export default function App() {
             cursor: "pointer"
           }}
         >
-          <span className="logo-mark">
-            F
+          <span className="logo-mark" aria-label="FLASHGUYS logo">
+            <img
+              src="/favicon.svg"
+              alt="FLASHGUYS"
+              style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
+            />
           </span>
 
           <span className="header-brand-text">FLASHBOYS</span>

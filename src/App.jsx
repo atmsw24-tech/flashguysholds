@@ -1202,6 +1202,56 @@ export default function App() {
               )}
             </section>
 
+            {(() => {
+              const focusToken = selectedToken || filteredTokens[0];
+              const focusAddress = String(focusToken?.address || focusToken?.mint || "");
+              return (
+                <section className="terminal-layout" aria-label="Live trading terminal">
+                  <aside className="terminal-left">
+                    <div className="terminal-panel">
+                      <div className="terminal-panel-heading"><span>⚡ Live Feed</span><span className="terminal-live"><i /> LIVE DATA</span></div>
+                      <div className="terminal-feed-list">
+                        {filteredTokens.slice(0, 7).map((item) => (
+                          <button type="button" className={focusAddress && String(item.address || item.mint || "") === focusAddress ? "terminal-feed-item selected" : "terminal-feed-item"} key={item.id || item.address || item.mint || item.symbol} onClick={() => setSelectedToken(item)}>
+                            <TokenLogo token={item} />
+                            <span className="terminal-feed-name"><strong>{item.name || item.symbol || "Unknown token"}</strong><small>${item.symbol || "TOKEN"} · {item.chain === "robinhood" ? "Robinhood Chain" : "Solana"}</small></span>
+                            <span className="terminal-feed-price">{formatPrice(item.price)}</span>
+                          </button>
+                        ))}
+                        {filteredTokens.length === 0 ? <div className="terminal-empty">Waiting for live token feed…</div> : null}
+                      </div>
+                      <button type="button" className="terminal-text-link" onClick={() => { setTokenView("new"); setPage("discover"); }}>View new launches →</button>
+                    </div>
+                    <div className="terminal-panel terminal-social-panel">
+                      <div className="terminal-panel-heading"><span>𝕏 X Tracker</span><span className="terminal-live"><i /> STATUS</span></div>
+                      <div className="terminal-social-body">
+                        <strong>Token-specific social signals</strong>
+                        <p>Open a token to inspect its details. Live X posts appear here when the X API is configured.</p>
+                        <div className="terminal-social-status">{focusToken ? `Selected: ${focusToken.name || focusToken.symbol || "Token"}` : "Select a token to begin"}</div>
+                        <button type="button" className="terminal-text-link" onClick={() => setAccountOpen(true)}>Connect account / wallet →</button>
+                      </div>
+                    </div>
+                  </aside>
+                  <section className="terminal-center">
+                    {focusToken ? (
+                      <>
+                        <div className="terminal-token-heading">
+                          <div className="terminal-token-identity"><TokenLogo token={focusToken} /><div><h2>{focusToken.name || "Unknown Token"} <span>{focusToken.chain === "robinhood" ? "Robinhood Chain" : "Solana"}</span></h2><p>${focusToken.symbol || "TOKEN"} · {focusAddress ? `${focusAddress.slice(0, 7)}…${focusAddress.slice(-6)}` : "Contract address unavailable"}</p></div></div>
+                          <div className="terminal-head-metrics"><div><small>Price</small><strong>{formatPrice(focusToken.price)}</strong></div><div><small>Market Cap</small><strong>{Number(focusToken.marketCap) > 0 ? formatNumber(focusToken.marketCap) : "N/A"}</strong></div><div><small>Liquidity</small><strong>{Number(focusToken.liquidity) > 0 ? formatNumber(focusToken.liquidity) : "N/A"}</strong></div><div><small>Holders</small><strong>{Number.isFinite(Number(focusToken.holders)) && focusToken.holders != null ? Number(focusToken.holders).toLocaleString() : "Unavailable"}</strong></div></div>
+                        </div>
+                        <div className="terminal-chart-wrap"><PriceChart key={focusAddress || focusToken.symbol} token={focusToken} /></div>
+                      </>
+                    ) : <div className="terminal-empty terminal-chart-empty">No token selected. Waiting for live market data.</div>}
+                  </section>
+                  <aside className="terminal-right">
+                    <div className="terminal-panel terminal-metrics-panel">
+                      <div className="terminal-panel-heading">Token Overview</div>
+                      {focusToken ? <><div className="terminal-score"><span>ϟ</span><div><strong>Market Snapshot</strong><small>Reported data only · not a safety score</small></div></div><div className="terminal-metric-row"><span>Price</span><strong>{formatPrice(focusToken.price)}</strong></div><div className="terminal-metric-row"><span>Market Cap</span><strong>{Number(focusToken.marketCap) > 0 ? formatNumber(focusToken.marketCap) : "N/A"}</strong></div><div className="terminal-metric-row"><span>Liquidity</span><strong>{Number(focusToken.liquidity) > 0 ? formatNumber(focusToken.liquidity) : "N/A"}</strong></div><div className="terminal-metric-row"><span>24h Volume</span><strong>{Number(focusToken.volume24h || focusToken.volume1h) > 0 ? formatNumber(focusToken.volume24h || focusToken.volume1h) : "N/A"}</strong></div><div className="terminal-metric-row"><span>Indexed Holders</span><strong>{Number.isFinite(Number(focusToken.holders)) && focusToken.holders != null ? Number(focusToken.holders).toLocaleString() : "Unavailable"}</strong></div><div className="terminal-contract"><small>Contract Address</small><code title={focusAddress}>{focusAddress || "Unavailable"}</code>{focusAddress ? <button type="button" onClick={() => navigator.clipboard?.writeText(focusAddress).catch(() => {})}>⧉ Copy CA</button> : null}{focusToken.pairUrl ? <a href={focusToken.pairUrl} target="_blank" rel="noreferrer">Open market pair ↗</a> : null}</div></> : <div className="terminal-empty">Token metrics will appear when data loads.</div>}
+                    </div>
+                  </aside>
+                </section>
+              );
+            })()}
             <section className="token-card">
               {loading && tokens.length === 0 ? (
                 <div className="status">

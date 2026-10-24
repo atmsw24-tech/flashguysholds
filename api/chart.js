@@ -94,8 +94,8 @@ export default async function handler(req, res) {
             const candlesPayload = await candlesResponse.json();
             const rows = candlesPayload?.data?.attributes?.ohlcv_list;
             history = (Array.isArray(rows) ? rows : [])
-              .map((row) => ({ time: Number(row[0]) * 1000, open: Number(row[1]), high: Number(row[2]), low: Number(row[3]), close: Number(row[4]), price: Number(row[4]) }))
-              .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.price) && point.price > 0)
+              .map((row) => ({ time: Number(row[0]) * 1000, open: Number(row[1]), high: Number(row[2]), low: Number(row[3]), close: Number(row[4]), price: Number(row[4]), volume: Number(row[5] || 0) }))
+              .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.open) && Number.isFinite(point.high) && Number.isFinite(point.low) && Number.isFinite(point.price) && point.price > 0 && point.high > 0 && point.low > 0)
               .sort((a, b) => a.time - b.time);
           } else {
             historyWarning = "Historical candles are temporarily unavailable; showing live price samples.";

@@ -310,8 +310,8 @@ function PriceChart({ token }) {
   // market-cap/price ratio (implied token supply); never label these as raw prices.
   const currentMcap=Number(marketCap||token?.marketCap||0);
   const mcapMultiplier=current>0&&currentMcap>0?currentMcap/current:0;
-  const chartCandles=mcapMultiplier>0?candles.map(c=>({...c,open:Number(c.open??c.close)*mcapMultiplier,high:Number(c.high??c.close)*mcapMultiplier,low:Number(c.low??c.close)*mcapMultiplier,close:Number(c.close??c.price)*mcapMultiplier,price:Number(c.close??c.price)*mcapMultiplier})):candles;
-  const displayCurrent=currentMcap>0?currentMcap:(mcapMultiplier>0?current*mcapMultiplier:current);
+  const chartCandles=mcapMultiplier>0?candles.map(c=>({...c,open:Number(c.open??c.close)*mcapMultiplier,high:Number(c.high??c.close)*mcapMultiplier,low:Number(c.low??c.close)*mcapMultiplier,close:Number(c.close??c.price)*mcapMultiplier,price:Number(c.close??c.price)*mcapMultiplier})):[];
+  const displayCurrent=currentMcap;
   const lows=chartCandles.map(p=>Number(p.low??p.close)).filter(Number.isFinite),highs=chartCandles.map(p=>Number(p.high??p.close)).filter(Number.isFinite);
   // Include the latest quote in the scale; otherwise a fast move can put the live
   // line/current-price marker outside the historical candle range and make the chart look broken.
@@ -331,8 +331,8 @@ function PriceChart({ token }) {
       <div className="refined-price-block"><div className="refined-symbol-line"><span className="refined-symbol">{token?.symbol||"TOKEN"}</span><span className="refined-pair">/ MARKET CAP</span><span className={liveConnected?"refined-live-dot":"refined-live-dot muted"}>{liveConnected?"LIVE":"MARKET DATA"}</span></div><div className="refined-price-line"><strong>{displayCurrent>0?priceFmt(displayCurrent):"MCAP N/A"}</strong>{change!==null?<span className={change>=0?"refined-change up":"refined-change down"}>{change>=0?"+":""}{change.toFixed(2)}%</span>:null}</div><div className="refined-updated">{updatedAt?"Updated "+updatedAt.toLocaleTimeString():"Waiting for market data"}</div></div>
       <div className="refined-chart-controls"><div className="gmgn-timeframes" role="group" aria-label="Chart timeframe">{timeframes.map(tf=><button key={tf.value} type="button" className={timeframe===tf.value?"active":""} onClick={()=>setTimeframe(tf.value)}>{tf.label}</button>)}</div><div className="refined-chart-mode" role="group" aria-label="Chart style"><button type="button" className={chartType==="candles"?"active":""} onClick={()=>setChartType("candles")}>Candles</button><button type="button" className={chartType==="line"?"active":""} onClick={()=>setChartType("line")}>Line</button></div><button type="button" className={showVolume?"refined-volume-toggle active":"refined-volume-toggle"} onClick={()=>setShowVolume(v=>!v)}>{showVolume?"Volume on":"Volume off"}</button></div>
     </div>
-    <div className="refined-ohlc-strip">{active?<><span><i>O</i>{priceFmt(active.open??active.close)}</span><span><i>H</i>{priceFmt(active.high??active.close)}</span><span><i>L</i>{priceFmt(active.low??active.close)}</span><span><i>C</i>{priceFmt(active.close??active.price)}</span></>:<span>Market-cap candles appear when market data is available</span>}</div>
-    {candles.length>=1?<div className="gmgn-candle-chart refined-candle-chart">
+    <div className="refined-ohlc-strip">{active?<><span><i>O</i>{priceFmt(active.open??active.close)}</span><span><i>H</i>{priceFmt(active.high??active.close)}</span><span><i>L</i>{priceFmt(active.low??active.close)}</span><span><i>C</i>{priceFmt(active.close??active.price)}</span></>:<span>Market-cap chart needs a reported market cap; price-only candles are hidden to avoid misleading values</span>}</div>
+    {chartCandles.length>=1?<div className="gmgn-candle-chart refined-candle-chart">
       <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Market-cap chart for ${token?.symbol||"token"}, ${timeframe} timeframe`} preserveAspectRatio="none" style={{width:"100%",minWidth:"760px",height:"auto",display:"block"}}>
         <defs><linearGradient id="refinedChartGlow" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#35d49a" stopOpacity=".13"/><stop offset="100%" stopColor="#35d49a" stopOpacity="0"/></linearGradient></defs>
         {[0,1,2,3,4].map(i=>{const yy=top+plotH*i/4,val=maxPrice-range*i/4;return <g key={i}><line x1={left} x2={width-right+3} y1={yy} y2={yy} stroke="#202936" strokeWidth="1"/><text x={width-right+10} y={yy+4} fill="#8490a0" fontSize="11">{priceFmt(val)}</text></g>})}
@@ -344,7 +344,7 @@ function PriceChart({ token }) {
       </svg>
       {hovered?<div className="gmgn-candle-tooltip refined-tooltip"><strong>{new Date(hovered.time).toLocaleString()}</strong><span>O {priceFmt(hovered.open??hovered.close)}</span><span>H {priceFmt(hovered.high??hovered.close)}</span><span>L {priceFmt(hovered.low??hovered.close)}</span><span>C {priceFmt(hovered.close??hovered.price)}</span></div>:null}
     </div>:<div className="gmgn-chart-placeholder refined-chart-placeholder"><div className="refined-placeholder-icon">⌁</div><strong>{chartLoading?"Loading market candles…":"Waiting for candle history"}</strong><span>{displayCurrent>0?"Latest market cap "+priceFmt(displayCurrent):"Market cap is not available yet."}</span></div>}
-    <div className="gmgn-chart-footer"><span>● MCAP candles · {timeframe}</span><span>{candles.filter(c=>!c.sampled).length} historical candles{candles.some(c=>c.sampled)?" · live price samples":""} {showVolume?"· Volume":" "}</span></div>
+    <div className="gmgn-chart-footer"><span>● MCAP candles · {timeframe}</span><span>{chartCandles.filter(c=>!c.sampled).length} historical candles{chartCandles.some(c=>c.sampled)?" · estimated MCAP samples":""} {showVolume?"· Volume":" "}</span></div>
     {chartError?<div className="chart-empty">{chartError}</div>:null}
   </div>;
 }

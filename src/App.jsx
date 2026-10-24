@@ -216,7 +216,7 @@ function TokenRow({ token, onClick, watched, onToggleWatch }) {
 }
 
 function PriceChart({ token }) {
-  const [history,setHistory]=useState(()=>Array.isArray(token?.priceHistory)?token.priceHistory.map(point=>({time:Number(point.time),open:Number(point.open??point.price),high:Number(point.high??point.price),low:Number(point.low??point.price),close:Number(point.close??point.price),price:Number(point.price??point.close),volume:0,sampled:true})).filter(point=>point.time>0&&point.close>0).slice(-60):[]);
+  const [history,setHistory]=useState(()=>Array.isArray(token?.priceHistory)?token.priceHistory.map(point=>{const rawTime=Number(point.time);const time=rawTime>0&&rawTime<1e12?rawTime*1000:rawTime;const close=Number(point.close??point.price);const open=Number(point.open??point.price??close);return {time,open,high:Number(point.high??Math.max(open,close)),low:Number(point.low??Math.min(open,close)),close,price:close,volume:Number(point.volume??0),sampled:true};}).filter(point=>point.time>0&&point.close>0&&Number.isFinite(point.close)).slice(-60):[]);
   const [chartError,setChartError]=useState("");
   const [chartLoading,setChartLoading]=useState(true);
   const [livePrice,setLivePrice]=useState(Number(token?.price||0));
@@ -253,7 +253,7 @@ function PriceChart({ token }) {
         const response=await fetch(`/api/chart?address=${encodeURIComponent(address)}&chain=${chain}&timeframe=${timeframe}&fallbackPrice=${encodeURIComponent(Number(token?.price||livePrice||0))}&pairAddress=${encodeURIComponent(token?.pairAddress||"")}&_=${Date.now()}`,{cache:"no-store",headers:{Accept:"application/json"}});
         const data=await response.json();if(!response.ok)throw new Error(data.error||"Market data unavailable");if(cancelled)return;
         const price=Number(data.price);if(price>0)setLivePrice(price);
-        const points=Array.isArray(data.history)?data.history.map(p=>({time:Number(p.time),open:Number(p.open??p.price),high:Number(p.high??p.price),low:Number(p.low??p.price),close:Number(p.close??p.price),price:Number(p.close??p.price),volume:Number(p.volume??0)})).filter(p=>p.time>0&&p.close>0):[];
+        const points=Array.isArray(data.history)?data.history.map(p=>{const rawTime=Number(p.time);const time=rawTime>0&&rawTime<1e12?rawTime*1000:rawTime;const close=Number(p.close??p.price);const open=Number(p.open??close);return {time,open,high:Number(p.high??Math.max(open,close)),low:Number(p.low??Math.min(open,close)),close,price:close,volume:Number(p.volume??0)};}).filter(p=>p.time>0&&Number.isFinite(p.time)&&p.close>0&&Number.isFinite(p.close)&&Number.isFinite(p.open)&&Number.isFinite(p.high)&&Number.isFinite(p.low)).sort((a,b)=>a.time-b.time):[];
         setHistory(previous=>{
           const priorSamples=previous.filter(p=>p.sampled||p.observed);
           const now=Date.now();
@@ -303,9 +303,12 @@ function PriceChart({ token }) {
   const candles=history.filter(p=>Number(p.close??p.price)>0).slice(-60);
   const width=920,height=390,left=16,right=86,top=22,bottom=42,volumeHeight=showVolume?68:0,gap=showVolume?12:0;
   const plotW=width-left-right,plotH=height-top-bottom-volumeHeight-gap;
-  const lows=candles.map(p=>Number(p.low??p.close)),highs=candles.map(p=>Number(p.high??p.close));
   const current=Number(livePrice||token?.price||0);
-  let minPrice=candles.length?Math.min(...lows):current*.99,maxPrice=candles.length?Math.max(...highs):current*1.01;
+  const lows=candles.map(p=>Number(p.low??p.close)).filter(Number.isFinite),highs=candles.map(p=>Number(p.high??p.close)).filter(Number.isFinite);
+  // Include the latest quote in the scale; otherwise a fast move can put the live
+  // line/current-price marker outside the historical candle range and make the chart look broken.
+  if(current>0){lows.push(current);highs.push(current);}
+  let minPrice=lows.length?Math.min(...lows):current*.99,maxPrice=highs.length?Math.max(...highs):current*1.01;
   if(maxPrice<=minPrice){const pad=Math.max(Math.abs(maxPrice)*.015,1e-12);minPrice-=pad;maxPrice+=pad;}
   const pad=(maxPrice-minPrice)*.10;minPrice=Math.max(0,minPrice-pad);maxPrice+=pad;
   const range=maxPrice-minPrice||1e-12,y=v=>top+((maxPrice-v)/range)*plotH,step=plotW/Math.max(candles.length,1);

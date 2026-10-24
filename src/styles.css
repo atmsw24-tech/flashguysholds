@@ -1248,3 +1248,9 @@ html, body, #root {
 @media(max-width:1250px){.terminal-layout{grid-template-columns:minmax(210px,260px) minmax(360px,1fr)}.terminal-right{grid-column:1/-1;grid-template-columns:repeat(2,minmax(0,1fr))}.terminal-right .terminal-panel{height:100%}}
 @media(max-width:850px){.terminal-layout{grid-template-columns:minmax(0,1fr)}.terminal-left{grid-template-columns:repeat(2,minmax(0,1fr))}.terminal-right{grid-template-columns:1fr;grid-column:auto}.terminal-head-metrics{gap:12px}.terminal-chart-wrap .refined-candle-chart{min-height:250px}}
 @media(max-width:560px){.terminal-left{grid-template-columns:1fr}.terminal-token-heading{padding:12px}.terminal-head-metrics{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.terminal-token-identity h2{font-size:15px}.terminal-chart-wrap{padding:0 3px 6px}.terminal-chart-wrap .refined-chart-controls{align-items:flex-start}.terminal-chart-wrap .gmgn-timeframes{flex-wrap:wrap}.terminal-chart-wrap .refined-candle-chart{min-height:230px}}
+
+
+/* Horizontal market chart: keep price history readable across the full timeline. */
+.refined-candle-chart{display:block;width:100%;max-width:100%;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:#5b3a7a #0b0f15}
+.refined-candle-chart svg{width:100%;min-width:760px;height:auto;min-height:340px;aspect-ratio:920/390;display:block}
+@media(max-width:620px){.refined-candle-chart svg{width:760px;min-width:760px;min-height:322px}.refined-candle-chart{touch-action:pan-x pan-y}}

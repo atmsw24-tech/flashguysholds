@@ -398,7 +398,7 @@ function TokenXFeed({ token }) {
   </section>;
 }
 
-function TokenModal({ token, onClose }) {
+function TokenModal({ token, onClose, watched, onToggleWatch }) {
   if (!token) return null;
 
   return (
@@ -427,13 +427,14 @@ function TokenModal({ token, onClose }) {
             </div>
           </div>
 
+          <div className="modal-header-actions"><button type="button" className={watched ? "watch-token is-watched modal-watch-token" : "watch-token modal-watch-token"} onClick={() => onToggleWatch?.(token)} aria-pressed={Boolean(watched)}>{watched ? "★ Starred" : "☆ Star coin"}</button>
           <button
             className="close-button"
             onClick={onClose}
             aria-label="Close"
           >
             ×
-          </button>
+          </button></div>
         </div>
 
         <div className="modal-body">
@@ -1346,6 +1347,8 @@ export default function App() {
 
       <TokenModal
         token={selectedToken}
+        watched={Boolean(selectedToken && watchlist.some((item) => item.address === String(selectedToken.address || selectedToken.mint || selectedToken.id || "").toLowerCase()))}
+        onToggleWatch={toggleWatch}
         onClose={() =>
           setSelectedToken(null)
         }

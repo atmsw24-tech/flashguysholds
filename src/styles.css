@@ -1254,3 +1254,7 @@ html, body, #root {
 .refined-candle-chart{display:block;width:100%;max-width:100%;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:#5b3a7a #0b0f15}
 .refined-candle-chart svg{width:100%;min-width:760px;height:auto;min-height:340px;aspect-ratio:920/390;display:block}
 @media(max-width:620px){.refined-candle-chart svg{width:760px;min-width:760px;min-height:322px}.refined-candle-chart{touch-action:pan-x pan-y}}
+
+/* Star coins directly from the token details panel. */
+.modal-header-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}.modal-watch-token{font-size:11px;padding:8px 10px;cursor:pointer}.modal-watch-token.is-watched{color:#e9d5ff;border-color:rgba(168,85,247,.6);background:rgba(168,85,247,.18)}
+@media(max-width:520px){.modal-header-actions{gap:5px}.modal-watch-token{font-size:10px;padding:6px 7px}}

@@ -34,7 +34,9 @@ async function authRequest(path, body, accessToken) {
   if (!SUPABASE_URL || !SUPABASE_KEY) {
     throw new Error("Account login is not configured yet. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel.");
   }
-  const response = await fetch(SUPABASE_URL + path, {
+  let response;
+  try {
+    response = await fetch(SUPABASE_URL + path, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -42,7 +44,10 @@ async function authRequest(path, body, accessToken) {
       ...(accessToken ? { Authorization: "Bearer " + accessToken } : {})
     },
     body: JSON.stringify(body)
-  });
+    });
+  } catch (error) {
+    throw new Error("Cannot reach Supabase. Check the Vercel Supabase URL/key and redeploy. Details: " + (error?.message || "network request failed"));
+  }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.msg || data.message || data.error_description || data.error || "Authentication failed.");
   return data;
@@ -289,12 +294,12 @@ export default function AccountPanel({ onClose }) {
             <button className="account-secondary" onClick={signOut}>Sign out</button>
           </div>
         ) : (
-          <form className="account-form" onSubmit={submit}>
+          <form className="account-form" onSubmit={submit} onInvalid={(event) => { setMessage(event.target?.validationMessage ? "Please check the form: " + event.target.validationMessage : "Please enter a valid email and a password of at least 6 characters."); }}>
             <label>Email address</label>
             <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
             <label>Password</label>
             <input type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} minLength={6} required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 6 characters" />
-            <button className="account-primary" disabled={busy}>{busy ? "Please wait..." : mode === "signup" ? "Create account" : "Sign in"}</button>
+            <button type="submit" className="account-primary" disabled={busy}>{busy ? "Please wait..." : mode === "signup" ? "Create account" : "Sign in"}</button>
             <p className="account-switch">{mode === "signup" ? "Already have an account?" : "New to FLASHGUYS?"} <button type="button" onClick={() => { setMode(mode === "signup" ? "login" : "signup"); setMessage(""); }}>{mode === "signup" ? "Sign in" : "Create account"}</button></p>
           </form>
         )}

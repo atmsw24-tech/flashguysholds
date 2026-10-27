@@ -783,6 +783,8 @@ a {
 .account-form label, .account-label { color: #9aa4b4; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
 .account-form input { width: 100%; min-height: 43px; margin-bottom: 7px; padding: 11px 12px; border: 1px solid rgba(255,255,255,.1); border-radius: 9px; outline: none; background: #080b10; color: white; }
 .account-form input:focus { border-color: rgba(168,85,247,.6); }
+.account-forgot { justify-self: end; margin: -3px 0 5px; padding: 2px 0; border: 0; background: transparent; color: #c084fc; font-size: 12px; font-weight: 700; cursor: pointer; }
+.account-forgot:hover, .account-forgot:focus-visible { color: #e9d5ff; text-decoration: underline; outline: none; }
 .account-primary, .account-secondary { border: 1px solid rgba(255,255,255,.12); border-radius: 9px; padding: 10px 13px; color: #f5f7fa; background: #1a202a; font-weight: 750; }
 .account-primary { border-color: #a855f7; background: #a855f7; color: #101407; }
 .account-primary:disabled { opacity: .65; cursor: wait; }

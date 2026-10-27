@@ -1258,3 +1258,49 @@ html, body, #root {
 /* Star coins directly from the token details panel. */
 .modal-header-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}.modal-watch-token{font-size:11px;padding:8px 10px;cursor:pointer}.modal-watch-token.is-watched{color:#e9d5ff;border-color:rgba(168,85,247,.6);background:rgba(168,85,247,.18)}
 @media(max-width:520px){.modal-header-actions{gap:5px}.modal-watch-token{font-size:10px;padding:6px 7px}}
+
+
+/* Signed-in live wallet balance */
+.account-balance-card {
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid rgba(151, 115, 255, 0.32);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.13), rgba(57, 213, 255, 0.045));
+  text-align: left;
+}
+.account-balance-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.account-label {
+  color: #a9a0ff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+}
+.account-balance-total {
+  margin: 10px 0 7px;
+  color: #fff;
+  font-size: clamp(28px, 5vw, 38px);
+  font-weight: 850;
+  letter-spacing: -1.2px;
+  font-variant-numeric: tabular-nums;
+}
+.account-balance-detail {
+  color: #a8b0c0;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.account-balance-updated {
+  margin-top: 8px;
+  color: #778195;
+  font-size: 11px;
+}
+.account-balance-card button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}

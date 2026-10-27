@@ -108,7 +108,10 @@ async function saveProfile(accessToken, user, updates = {}) {
 }
 
 export default function AccountPanel({ onClose }) {
-  const [mode, setMode] = useState("signup");
+  const recoveryParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const initialRecoveryToken = recoveryParams.get("type") === "recovery" ? recoveryParams.get("access_token") : "";
+  const [mode, setMode] = useState(initialRecoveryToken ? "reset" : "signup");
+  const [resetToken, setResetToken] = useState(initialRecoveryToken);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -177,8 +180,39 @@ export default function AccountPanel({ onClose }) {
   async function submit(event) {
     event.preventDefault();
     setBusy(true);
-    setMessage("Connecting to Supabase…");
+    setMessage("");
     try {
+      if (mode === "forgot") {
+        await authRequest("/auth/v1/recover", {
+          email: email.trim(),
+          redirect_to: window.location.origin
+        });
+        setMessage("If an account exists for that email, a password reset link will be sent. Check your inbox and spam folder.");
+        return;
+      }
+
+      if (mode === "reset") {
+        if (!resetToken) throw new Error("This password-reset link is missing or expired. Request a new one.");
+        if (password.length < 6) throw new Error("Your new password must be at least 6 characters.");
+        const response = await fetch(SUPABASE_URL + "/auth/v1/user", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: SUPABASE_KEY,
+            Authorization: "Bearer " + resetToken
+          },
+          body: JSON.stringify({ password })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.msg || result.message || result.error_description || "Could not reset your password. Request a new reset link.");
+        window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+        setResetToken("");
+        setPassword("");
+        setMode("login");
+        setMessage("Password updated successfully. You can now sign in with your new password.");
+        return;
+      }
+
       const data = await authRequest(
         mode === "signup" ? "/auth/v1/signup" : "/auth/v1/token?grant_type=password",
         { email: email.trim(), password }
@@ -333,8 +367,8 @@ export default function AccountPanel({ onClose }) {
       <section className="account-panel" role="dialog" aria-modal="true" aria-label="FLASHGUYS account" onClick={(event) => event.stopPropagation()}>
         <button className="account-close" onClick={onClose} aria-label="Close account panel">×</button>
         <div className="account-brand">FLASHGUYS <span>ACCOUNT</span></div>
-        <h2>{session?.user?.email ? "Your account" : mode === "signup" ? "Create your account" : "Welcome back"}</h2>
-        <p className="account-subtitle">{session?.user?.email ? "Manage your profile and connect your crypto wallet." : mode === "signup" ? "Join FLASHGUYS to follow the tokens moving first." : "Sign in to your FLASHGUYS account."}</p>
+        <h2>{session?.user?.email ? "Your account" : mode === "signup" ? "Create your account" : mode === "forgot" ? "Reset your password" : mode === "reset" ? "Choose a new password" : "Welcome back"}</h2>
+        <p className="account-subtitle">{session?.user?.email ? "Manage your profile and connect your crypto wallet." : mode === "signup" ? "Join FLASHGUYS to follow the tokens moving first." : mode === "forgot" ? "Enter your account email and we’ll send you a secure reset link." : mode === "reset" ? "Set a new password for your FLASHGUYS account." : "Sign in to your FLASHGUYS account."}</p>
 
         {session?.user?.email ? (
           <div className="account-signed-in">
@@ -354,10 +388,13 @@ export default function AccountPanel({ onClose }) {
           <form className="account-form" onSubmit={submit} onInvalid={(event) => { setMessage(event.target?.validationMessage ? "Please check the form: " + event.target.validationMessage : "Please enter a valid email and a password of at least 6 characters."); }}>
             <label>Email address</label>
             <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
-            <label>Password</label>
-            <input type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} minLength={6} required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 6 characters" />
-            <button type="submit" className="account-primary" onClick={() => setMessage("Create account clicked — checking Supabase…")} disabled={busy}>{busy ? "Please wait..." : mode === "signup" ? "Create account" : "Sign in"}</button>
-            <p className="account-switch">{mode === "signup" ? "Already have an account?" : "New to FLASHGUYS?"} <button type="button" onClick={() => { setMode(mode === "signup" ? "login" : "signup"); setMessage(""); }}>{mode === "signup" ? "Sign in" : "Create account"}</button></p>
+            {mode !== "forgot" ? <>
+              <label>{mode === "reset" ? "New password" : "Password"}</label>
+              <input type="password" autoComplete={mode === "signup" || mode === "reset" ? "new-password" : "current-password"} minLength={6} required value={password} onChange={(e) => setPassword(e.target.value)} placeholder={mode === "reset" ? "Enter your new password" : "At least 6 characters"} />
+            </> : null}
+            {mode === "login" ? <button type="button" className="account-forgot" onClick={() => { setMode("forgot"); setMessage(""); }}>Forgot password?</button> : null}
+            <button type="submit" className="account-primary" disabled={busy}>{busy ? "Please wait..." : mode === "signup" ? "Create account" : mode === "forgot" ? "Send reset link" : mode === "reset" ? "Update password" : "Sign in"}</button>
+            <p className="account-switch">{mode === "signup" ? "Already have an account?" : mode === "forgot" || mode === "reset" ? "Remembered your password?" : "New to FLASHGUYS?"} <button type="button" onClick={() => { setMode(mode === "signup" ? "login" : "login"); setMessage(""); setPassword(""); }}>{mode === "signup" ? "Sign in" : mode === "forgot" || mode === "reset" ? "Back to sign in" : "Create account"}</button></p>
           </form>
         )}
         {message ? <div className="account-message account-message-near-form" role="status" aria-live="polite">{message}</div> : null}

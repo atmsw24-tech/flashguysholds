@@ -309,6 +309,7 @@ export default function AccountPanel({ onClose }) {
             <p className="account-switch">{mode === "signup" ? "Already have an account?" : "New to FLASHGUYS?"} <button type="button" onClick={() => { setMode(mode === "signup" ? "login" : "signup"); setMessage(""); }}>{mode === "signup" ? "Sign in" : "Create account"}</button></p>
           </form>
         )}
+        {message ? <div className="account-message account-message-near-form" role="status" aria-live="polite">{message}</div> : null}
 
         <div className="account-divider"><span>CHOOSE YOUR ECOSYSTEM</span></div>
         <div className="account-ecosystems" aria-label="Choose a blockchain"><button type="button" className="account-ecosystem solana-ecosystem" onClick={() => connectWallet("solana")}>Connect Solana</button><button type="button" className="account-ecosystem robinhood-ecosystem" onClick={() => connectWallet("evm")}>Connect Robinhood Chain</button></div>
@@ -325,7 +326,6 @@ export default function AccountPanel({ onClose }) {
           </div>
         )}
         <p className="account-safety">FLASHGUYS never asks for your seed phrase or private key. Connecting a wallet does not send a transaction. The Robinhood Chain button requests an EVM wallet and verifies chain ID 4663 before reporting a successful connection.</p>
-        {message ? <div className="account-message" role="status">{message}</div> : null}
       </section>
     </div>
   );

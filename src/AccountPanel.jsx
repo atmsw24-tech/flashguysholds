@@ -13,7 +13,7 @@ async function fetchNativeWalletBalance(wallet) {
     const data = await response.json();
     if (!response.ok || data.error || !Number.isFinite(data.result?.value)) throw new Error(data.error?.message || "Could not read the Solana balance.");
     nativeAmount = data.result.value / 1e9; assetId = "solana"; symbol = "SOL";
-  } else if (wallet.chain === "evm") {
+  } else if (wallet.chain === "evm" || wallet.chain === "robinhood") {
     const response = await fetch("https://rpc.mainnet.chain.robinhood.com", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBalance", params: [wallet.address, "latest"] }) });
     const data = await response.json();
     if (!response.ok || data.error || typeof data.result !== "string") throw new Error(data.error?.message || "Could not read the Robinhood Chain balance.");

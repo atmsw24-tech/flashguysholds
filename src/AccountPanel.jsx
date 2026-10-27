@@ -5,6 +5,30 @@ const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 const SESSION_KEY = "flashguys.auth.session";
 const WALLET_KEY = "flashguys.connected.wallet";
 
+async function fetchNativeWalletBalance(wallet) {
+  if (!wallet?.address || !wallet?.chain) throw new Error("Connect a wallet to view its balance.");
+  let nativeAmount, assetId, symbol;
+  if (wallet.chain === "solana") {
+    const response = await fetch("https://api.mainnet-beta.solana.com", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getBalance", params: [wallet.address, { commitment: "confirmed" }] }) });
+    const data = await response.json();
+    if (!response.ok || data.error || !Number.isFinite(data.result?.value)) throw new Error(data.error?.message || "Could not read the Solana balance.");
+    nativeAmount = data.result.value / 1e9; assetId = "solana"; symbol = "SOL";
+  } else if (wallet.chain === "evm") {
+    const response = await fetch("https://rpc.mainnet.chain.robinhood.com", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBalance", params: [wallet.address, "latest"] }) });
+    const data = await response.json();
+    if (!response.ok || data.error || typeof data.result !== "string") throw new Error(data.error?.message || "Could not read the Robinhood Chain balance.");
+    nativeAmount = Number(BigInt(data.result)) / 1e18; assetId = "ethereum"; symbol = "ETH";
+  } else throw new Error("Unsupported wallet network.");
+  const priceResponse = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana%2Cethereum&vs_currencies=usd");
+  const prices = await priceResponse.json();
+  const price = prices?.[assetId]?.usd;
+  if (!priceResponse.ok || !Number.isFinite(price) || price <= 0) throw new Error("On-chain balance loaded, but USD pricing is unavailable. Refresh to try again.");
+  return { nativeAmount, symbol, price, usd: nativeAmount * price, updatedAt: new Date().toISOString() };
+}
+function formatUsd(value) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+}
+
 function shortAddress(value) {
   return value ? value.slice(0, 5) + "..." + value.slice(-5) : "";
 }
@@ -95,6 +119,23 @@ export default function AccountPanel({ onClose }) {
   const [wallet, setWallet] = useState(() => {
     try { return JSON.parse(localStorage.getItem(WALLET_KEY) || "null"); } catch { return null; }
   });
+  const [balance, setBalance] = useState(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [balanceError, setBalanceError] = useState("");
+
+  async function refreshBalance(targetWallet = wallet) {
+    if (!targetWallet?.address) { setBalance(null); setBalanceError("Connect a wallet to view a live balance."); return; }
+    setBalanceLoading(true); setBalanceError("");
+    try { setBalance(await fetchNativeWalletBalance(targetWallet)); }
+    catch (error) { setBalance(null); setBalanceError(error?.message || "Unable to load the live wallet balance."); }
+    finally { setBalanceLoading(false); }
+  }
+
+  useEffect(() => {
+    if (session?.user?.email && wallet?.address) refreshBalance(wallet);
+    else setBalance(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id, wallet?.address, wallet?.chain]);
 
   useEffect(() => {
     const listener = () => {
@@ -276,6 +317,8 @@ export default function AccountPanel({ onClose }) {
     } catch {}
     localStorage.removeItem(WALLET_KEY);
     setWallet(null);
+    setBalance(null);
+    setBalanceError("Connect a wallet to view a live balance.");
     setMessage("Wallet disconnected from this website.");
   }
 
@@ -297,6 +340,14 @@ export default function AccountPanel({ onClose }) {
           <div className="account-signed-in">
             <div className="account-label">SIGNED IN AS</div>
             <strong>{session.user.email}</strong>
+            <div className="account-balance-card" aria-live="polite">
+              <div className="account-balance-top"><span className="account-label">LIVE WALLET VALUE</span>
+                <button type="button" className="account-secondary" onClick={() => refreshBalance()} disabled={balanceLoading || !wallet?.address}>{balanceLoading ? "Refreshing…" : "Refresh"}</button>
+              </div>
+              <div className="account-balance-total">{balance ? formatUsd(balance.usd) : "—"}</div>
+              <div className="account-balance-detail">{!wallet?.address ? "Connect Solana or Robinhood Chain to see your balance." : balanceLoading && !balance ? "Reading on-chain balance…" : balanceError || (balance ? `${balance.nativeAmount.toLocaleString("en-US", { maximumFractionDigits: 8 })} ${balance.symbol} · ${formatUsd(balance.price)} per ${balance.symbol}` : "Balance not loaded yet.")}</div>
+              {balance?.updatedAt ? <div className="account-balance-updated">Updated {new Date(balance.updatedAt).toLocaleTimeString()}</div> : null}
+            </div>
             <button className="account-secondary" onClick={signOut}>Sign out</button>
           </div>
         ) : (

@@ -34,13 +34,26 @@ function shortAddress(value) {
 }
 
 function getSolanaProvider() {
-  // Prefer explicitly identified wallet providers; generic window.solana can
-  // be overwritten when users have more than one wallet extension installed.
-  if (window.phantom?.solana?.isPhantom) return { provider: window.phantom.solana, name: "Phantom" };
-  if (window.solflare?.isSolflare) return { provider: window.solflare, name: "Solflare" };
-  if (window.solana?.isPhantom) return { provider: window.solana, name: "Phantom" };
-  if (window.solana?.isSolflare) return { provider: window.solana, name: "Solflare" };
-  if (window.solana?.connect) return { provider: window.solana, name: "Solana wallet" };
+  // Wallet extensions expose different injection points. Prefer known providers
+  // before the generic window.solana property, which can be overwritten.
+  const candidates = [
+    [window.phantom?.solana, "Phantom"],
+    [window.solflare, "Solflare"],
+    [window.backpack?.solana, "Backpack"],
+    [window.backpack, "Backpack"],
+    [window.okxwallet?.solana, "OKX Wallet"],
+    [window.coinbaseSolana, "Coinbase Wallet"],
+    [window.trustwallet?.solana, "Trust Wallet"],
+    [window.solana, "Solana wallet"]
+  ];
+  const seen = new Set();
+  for (const [provider, name] of candidates) {
+    if (!provider || seen.has(provider) || typeof provider.connect !== "function") continue;
+    seen.add(provider);
+    if (name === "Phantom" && provider.isPhantom !== true) continue;
+    if (name === "Solflare" && provider.isSolflare !== true) continue;
+    return { provider, name };
+  }
   return null;
 }
 
@@ -251,7 +264,7 @@ export default function AccountPanel({ onClose }) {
         const detected = getSolanaProvider();
         const provider = detected?.provider;
         if (!provider?.connect) {
-          throw new Error("No Solana wallet was detected. Install Phantom or Solflare, then reload FLASHGUYS.");
+          throw new Error("FLASHGUYS cannot detect an injected Solana wallet in this browser. Install or unlock Phantom or Solflare, make sure the extension is enabled for this site, then reload the page. If already installed, open the wallet once and try again.");
         }
         const result = await provider.connect();
         address = result?.publicKey?.toString?.() || provider.publicKey?.toString?.();

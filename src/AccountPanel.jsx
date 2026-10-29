@@ -192,6 +192,28 @@ async function saveProfile(accessToken, user, updates = {}) {
   return true;
 }
 
+async function refreshAuthSession(refreshToken) {
+  if (!refreshToken) throw new Error("Your login session expired. Sign in again to save your wallet to your account.");
+  const data = await authRequest("/auth/v1/token?grant_type=refresh_token", { refresh_token: refreshToken });
+  if (!data?.access_token || !data?.user) throw new Error("Could not refresh your login session. Sign in again.");
+  return data;
+}
+
+async function saveProfileWithSession(session, setSession, updates = {}) {
+  try {
+    await saveProfile(session?.access_token, session?.user, updates);
+    return session;
+  } catch (error) {
+    if (!/jwt expired|token is expired|expired jwt/i.test(error?.message || "")) throw error;
+    const refreshed = await refreshAuthSession(session?.refresh_token);
+    const saved = { ...session, ...refreshed, user: refreshed.user || session.user };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(saved));
+    setSession(saved);
+    await saveProfile(saved.access_token, saved.user, updates);
+    return saved;
+  }
+}
+
 export default function AccountPanel({ onClose }) {
   const recoveryParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   const initialRecoveryToken = recoveryParams.get("type") === "recovery" ? recoveryParams.get("access_token") : "";
@@ -362,7 +384,7 @@ export default function AccountPanel({ onClose }) {
         window.dispatchEvent(new Event("flashguys:wallet"));
         if (session?.access_token && session?.user?.id) {
           try {
-            await saveProfile(session.access_token, session.user, { wallet_address: address, wallet_chain: "solana", wallet_name: detected.name });
+            await saveProfileWithSession(session, setSession, { wallet_address: address, wallet_chain: "solana", wallet_name: detected.name });
             setMessage(`${detected.name} connected. Wallet address saved to your FLASHGUYS database profile. No transaction was sent.`);
           } catch (profileError) {
             setMessage(`${detected.name} connected in this browser, but database saving failed: ${profileError.message}`);
@@ -423,7 +445,7 @@ export default function AccountPanel({ onClose }) {
         window.dispatchEvent(new Event("flashguys:wallet"));
         if (session?.access_token && session?.user?.id) {
           try {
-            await saveProfile(session.access_token, session.user, { wallet_address: address, wallet_chain: "robinhood", wallet_name: connected.walletName });
+            await saveProfileWithSession(session, setSession, { wallet_address: address, wallet_chain: "robinhood", wallet_name: connected.walletName });
             setMessage(`${connected.walletName} connected to Robinhood Chain (4663). Wallet address saved to your FLASHGUYS database profile. No transaction was sent.`);
           } catch (profileError) {
             setMessage(`${connected.walletName} connected, but database saving failed: ${profileError.message}`);

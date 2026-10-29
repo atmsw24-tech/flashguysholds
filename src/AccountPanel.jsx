@@ -19,10 +19,33 @@ async function fetchNativeWalletBalance(wallet) {
     if (!response.ok || data.error || typeof data.result !== "string") throw new Error(data.error?.message || "Could not read the Robinhood Chain balance.");
     nativeAmount = Number(BigInt(data.result)) / 1e18; assetId = "ethereum"; symbol = "ETH";
   } else throw new Error("Unsupported wallet network.");
-  const priceResponse = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana%2Cethereum&vs_currencies=usd");
-  const prices = await priceResponse.json();
-  const price = prices?.[assetId]?.usd;
-  if (!priceResponse.ok || !Number.isFinite(price) || price <= 0) throw new Error("On-chain balance loaded, but USD pricing is unavailable. Refresh to try again.");
+  // Try CoinGecko first, then fall back to DexScreener's wrapped-native-token quote.
+  let price = 0;
+  try {
+    const priceResponse = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana%2Cethereum&vs_currencies=usd");
+    const prices = await priceResponse.json();
+    const candidate = Number(prices?.[assetId]?.usd || 0);
+    if (priceResponse.ok && Number.isFinite(candidate) && candidate > 0) price = candidate;
+  } catch {}
+  if (!price && wallet.chain === "solana") {
+    try {
+      const quoteResponse = await fetch("https://api.dexscreener.com/latest/dex/tokens/So11111111111111111111111111111111111111112");
+      const quoteData = await quoteResponse.json();
+      const solPair = (quoteData?.pairs || [])
+        .filter((pair) => pair.chainId === "solana" && Number(pair.priceUsd) > 0)
+        .sort((a, b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0))[0];
+      price = Number(solPair?.priceUsd || 0);
+    } catch {}
+  }
+  if (!price && wallet.chain !== "solana") {
+    try {
+      const quoteResponse = await fetch("https://api.dexscreener.com/latest/dex/tokens/0x0000000000000000000000000000000000000000");
+      const quoteData = await quoteResponse.json();
+      const pair = (quoteData?.pairs || []).find((item) => Number(item.priceUsd) > 0);
+      price = Number(pair?.priceUsd || 0);
+    } catch {}
+  }
+  if (!price) throw new Error("On-chain balance loaded, but SOL/USD pricing providers are unavailable. Refresh to retry.");
   return { nativeAmount, symbol, price, usd: nativeAmount * price, updatedAt: new Date().toISOString() };
 }
 function formatUsd(value) {
@@ -242,7 +265,7 @@ export default function AccountPanel({ onClose }) {
   }
 
   useEffect(() => {
-    if (session?.user?.email && wallet?.address) refreshBalance(wallet);
+    if (wallet?.address) refreshBalance(wallet);
     else setBalance(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id, wallet?.address, wallet?.chain]);
@@ -491,14 +514,6 @@ export default function AccountPanel({ onClose }) {
           <div className="account-signed-in">
             <div className="account-label">SIGNED IN AS</div>
             <strong>{session.user.email}</strong>
-            <div className="account-balance-card" aria-live="polite">
-              <div className="account-balance-top"><span className="account-label">LIVE WALLET VALUE</span>
-                <button type="button" className="account-secondary" onClick={() => refreshBalance()} disabled={balanceLoading || !wallet?.address}>{balanceLoading ? "Refreshing…" : "Refresh"}</button>
-              </div>
-              <div className="account-balance-total">{balance ? formatUsd(balance.usd) : "—"}</div>
-              <div className="account-balance-detail">{!wallet?.address ? "Connect Solana or Robinhood Chain to see your balance." : balanceLoading && !balance ? "Reading on-chain balance…" : balanceError || (balance ? `${balance.nativeAmount.toLocaleString("en-US", { maximumFractionDigits: 8 })} ${balance.symbol} · ${formatUsd(balance.price)} per ${balance.symbol}` : "Balance not loaded yet.")}</div>
-              {balance?.updatedAt ? <div className="account-balance-updated">Updated {new Date(balance.updatedAt).toLocaleTimeString()}</div> : null}
-            </div>
             <button className="account-secondary" onClick={signOut}>Sign out</button>
           </div>
         ) : (
@@ -530,6 +545,14 @@ export default function AccountPanel({ onClose }) {
             <button type="button" className="wallet-button" onClick={() => connectWallet("evm")}><span className="wallet-symbol evm-symbol">◇</span><span><strong>Robinhood Chain</strong><small>Connect MetaMask or a compatible EVM wallet</small></span><b>Connect</b></button>
           </div>
         )}
+        {wallet?.address ? <div className="account-balance-card" aria-live="polite">
+          <div className="account-balance-top"><span className="account-label">LIVE WALLET VALUE</span>
+            <button type="button" className="account-secondary" onClick={() => refreshBalance(wallet)} disabled={balanceLoading}>{balanceLoading ? "Refreshing…" : "Refresh"}</button>
+          </div>
+          <div className="account-balance-total">{balance ? formatUsd(balance.usd) : "—"}</div>
+          <div className="account-balance-detail">{balanceLoading && !balance ? "Reading on-chain balance…" : balanceError || (balance ? `${balance.nativeAmount.toLocaleString("en-US", { maximumFractionDigits: 8 })} ${balance.symbol} · ${formatUsd(balance.price)} per ${balance.symbol}` : "Balance not loaded yet.")}</div>
+          {balance?.updatedAt ? <div className="account-balance-updated">Updated {new Date(balance.updatedAt).toLocaleTimeString()}</div> : null}
+        </div> : null}
         <p className="account-safety">FLASHGUYS never asks for your seed phrase or private key. Connecting a wallet does not send a transaction. The Robinhood Chain button requests an EVM wallet and verifies chain ID 4663 before reporting a successful connection.</p>
       </section>
     </div>

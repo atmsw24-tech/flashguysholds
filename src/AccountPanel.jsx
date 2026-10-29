@@ -118,6 +118,18 @@ function discoverEvmProviders() {
   return () => window.removeEventListener("eip6963:announceProvider", onAnnounce);
 }
 
+async function findEvmProvider() {
+  // Re-request announcements on click and allow extensions a short moment to
+  // answer. This avoids racing the EIP-6963 async provider announcement.
+  window.dispatchEvent(new Event("eip6963:requestProvider"));
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const provider = getEvmProvider();
+    if (provider) return provider;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return getEvmProvider();
+}
+
 async function authRequest(path, body, accessToken) {
   if (!SUPABASE_URL || !SUPABASE_KEY) {
     throw new Error("Account login is not configured yet. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel.");
@@ -351,7 +363,7 @@ export default function AccountPanel({ onClose }) {
         }
       } else {
         const provider = getEvmProvider();
-        if (!provider?.request) throw new Error("FLASHGUYS cannot detect an EVM wallet provider. Unlock your wallet and refresh the page. If this browser blocks wallet extensions, allow the extension on this site or install MetaMask.");
+        if (!provider?.request) throw new Error("No EVM wallet provider responded. Unlock your wallet extension, ensure it is enabled for this website, then click Connect Robinhood Chain again. If no wallet extension is installed, install MetaMask or another EVM wallet first.");
         const accounts = await provider.request({ method: "eth_requestAccounts" });
         address = accounts?.[0] || "";
         if (!address) throw new Error("Wallet did not return a public address.");

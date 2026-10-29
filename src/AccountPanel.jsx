@@ -39,19 +39,19 @@ function getSolanaProvider() {
     ...standardProviders.map((item) => [item.provider, item.name]),
     [window.phantom?.solana, "Phantom"],
     [window.solflare, "Solflare"],
+    [window.solflare?.solana, "Solflare"],
     [window.backpack?.solana, "Backpack"],
     [window.backpack, "Backpack"],
     [window.okxwallet?.solana, "OKX Wallet"],
     [window.coinbaseSolana, "Coinbase Wallet"],
     [window.trustwallet?.solana, "Trust Wallet"],
-    [window.solana, "Solana wallet"]
+    [window.solana, "Solana wallet"],
+    [window.ethereum?.solana, "Solana wallet"]
   ];
   const seen = new Set();
   for (const [provider, name] of candidates) {
     if (!provider || seen.has(provider) || typeof provider.connect !== "function") continue;
     seen.add(provider);
-    if (name === "Phantom" && provider.isPhantom !== true) continue;
-    if (name === "Solflare" && provider.isSolflare !== true) continue;
     return { provider, name };
   }
   return null;
@@ -346,7 +346,7 @@ export default function AccountPanel({ onClose }) {
         const detected = await findSolanaProvider();
         const provider = detected?.provider;
         if (!provider?.connect) {
-          throw new Error("No Solana wallet provider was detected after waiting for browser extensions. Check that Phantom/Solflare is enabled for this site and that this page is open in the same browser profile as the wallet.");
+          throw new Error("No Solana wallet provider was injected into this page. Make sure Phantom or Solflare is enabled in this Chrome profile and allowed on this site, then reload FLASHGUYS. If the wallet is installed but still missing, open the wallet extension and check its site permissions.");
         }
         const result = await provider.connect();
         address = result?.publicKey?.toString?.() || provider.publicKey?.toString?.();

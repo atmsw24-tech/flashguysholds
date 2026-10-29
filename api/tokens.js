@@ -134,11 +134,17 @@ function mergeTokenLists(...lists) {
       merged.set(key, { ...token, chain, address });
       continue;
     }
-    // Keep the richest recent live-market record while retaining cached metadata.
+    // Prefer an actual live quote over a metadata-only record with no price.
     const newer = new Date(token.createdAt || 0).getTime() >= new Date(old.createdAt || 0).getTime();
-    const preferred = Number(token.liquidity || 0) >= Number(old.liquidity || 0) ? token : old;
+    const tokenHasPrice = Number(token.price) > 0;
+    const oldHasPrice = Number(old.price) > 0;
+    const preferred = tokenHasPrice !== oldHasPrice
+      ? (tokenHasPrice ? token : old)
+      : (Number(token.liquidity || 0) >= Number(old.liquidity || 0) ? token : old);
     merged.set(key, {
       ...old, ...token, ...preferred,
+      price: tokenHasPrice ? Number(token.price) : oldHasPrice ? Number(old.price) : Number(preferred.price || 0),
+      marketCap: Number(token.marketCap || 0) > 0 ? Number(token.marketCap) : Number(old.marketCap || 0),
       chain, address,
       name: token.name && token.name !== "Unknown" ? token.name : old.name,
       symbol: token.symbol && token.symbol !== "???" ? token.symbol : old.symbol,
@@ -433,12 +439,18 @@ async function getSolanaTokens(profiles) {
     const key = String(token.address || "").toLowerCase();
     if (!key) continue;
     const existing = byAddress.get(key);
-    // Prefer more complete market data while retaining metadata from either source.
+    // Prefer a valid price quote first; liquidity alone must not replace it with zero.
     if (!existing) {
       byAddress.set(key, token);
     } else {
-      const preferred = Number(token.liquidity || 0) >= Number(existing.liquidity || 0) ? token : existing;
+      const tokenHasPrice = Number(token.price) > 0;
+      const existingHasPrice = Number(existing.price) > 0;
+      const preferred = tokenHasPrice !== existingHasPrice
+        ? (tokenHasPrice ? token : existing)
+        : (Number(token.liquidity || 0) >= Number(existing.liquidity || 0) ? token : existing);
       byAddress.set(key, { ...existing, ...token, ...preferred,
+        price: tokenHasPrice ? Number(token.price) : existingHasPrice ? Number(existing.price) : Number(preferred.price || 0),
+        marketCap: Number(token.marketCap || 0) > 0 ? Number(token.marketCap) : Number(existing.marketCap || 0),
         logo: preferred.logo || existing.logo || token.logo || null,
         image: preferred.image || existing.image || token.image || null,
         pairUrl: preferred.pairUrl || existing.pairUrl || token.pairUrl || null,

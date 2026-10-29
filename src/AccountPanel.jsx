@@ -58,9 +58,13 @@ function getSolanaProvider() {
 }
 
 function getEvmProvider() {
-  // Wallets may inject asynchronously or expose a provider list when several
-  // extensions are installed. Check common injection points before failing.
+  // EIP-6963 is the modern discovery standard and works when multiple wallet
+  // extensions coexist. The legacy injected providers remain a fallback.
+  const discovered = Array.isArray(window.__flashguysEvmProviders)
+    ? window.__flashguysEvmProviders
+    : [];
   const candidates = [
+    ...discovered,
     window.ethereum,
     window.metaMask,
     window.okxwallet,
@@ -72,14 +76,30 @@ function getEvmProvider() {
   const providers = [];
   for (const candidate of candidates) {
     if (!candidate) continue;
-    const list = Array.isArray(candidate.providers) ? candidate.providers : [candidate];
-    for (const provider of list) {
-      if (provider?.request && !providers.includes(provider)) providers.push(provider);
+    const provider = candidate.provider || candidate;
+    const list = Array.isArray(provider.providers) ? provider.providers : [provider];
+    for (const item of list) {
+      if (item?.request && !providers.includes(item)) providers.push(item);
     }
   }
   return providers.find((provider) => provider.isMetaMask) ||
     providers.find((provider) => provider.isCoinbaseWallet) ||
     providers[0] || null;
+}
+
+function discoverEvmProviders() {
+  if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") return () => {};
+  const found = [];
+  const onAnnounce = (event) => {
+    const detail = event?.detail;
+    if (detail?.provider?.request && !found.some((item) => item.provider === detail.provider)) {
+      found.push({ provider: detail.provider, info: detail.info || {} });
+      window.__flashguysEvmProviders = found;
+    }
+  };
+  window.addEventListener("eip6963:announceProvider", onAnnounce);
+  window.dispatchEvent(new Event("eip6963:requestProvider"));
+  return () => window.removeEventListener("eip6963:announceProvider", onAnnounce);
 }
 
 async function authRequest(path, body, accessToken) {
@@ -167,6 +187,11 @@ export default function AccountPanel({ onClose }) {
     else setBalance(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id, wallet?.address, wallet?.chain]);
+
+  useEffect(() => {
+    const stopEvmDiscovery = discoverEvmProviders();
+    return () => stopEvmDiscovery();
+  }, []);
 
   useEffect(() => {
     const listener = () => {
@@ -305,7 +330,7 @@ export default function AccountPanel({ onClose }) {
         }
       } else {
         const provider = getEvmProvider();
-        if (!provider?.request) throw new Error("FLASHGUYS cannot detect an EVM wallet in this browser. Install or unlock MetaMask or another EVM wallet, enable its extension for this site, then reload the page. If already installed, open the wallet once and try again.");
+        if (!provider?.request) throw new Error("FLASHGUYS cannot detect an EVM wallet provider. Unlock your wallet and refresh the page. If this browser blocks wallet extensions, allow the extension on this site or install MetaMask.");
         const accounts = await provider.request({ method: "eth_requestAccounts" });
         address = accounts?.[0] || "";
         if (!address) throw new Error("Wallet did not return a public address.");

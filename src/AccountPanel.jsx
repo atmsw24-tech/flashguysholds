@@ -34,9 +34,9 @@ function shortAddress(value) {
 }
 
 function getSolanaProvider() {
-  // Wallet extensions expose different injection points. Prefer known providers
-  // before the generic window.solana property, which can be overwritten.
+  const standardProviders = Array.isArray(window.__flashguysSolanaProviders) ? window.__flashguysSolanaProviders : [];
   const candidates = [
+    ...standardProviders.map((item) => [item.provider, item.name]),
     [window.phantom?.solana, "Phantom"],
     [window.solflare, "Solflare"],
     [window.backpack?.solana, "Backpack"],
@@ -55,6 +55,22 @@ function getSolanaProvider() {
     return { provider, name };
   }
   return null;
+}
+
+function discoverSolanaProviders() {
+  if (typeof window === "undefined") return () => {};
+  const found = [];
+  const onAnnounce = (event) => {
+    const detail = event?.detail;
+    const provider = detail?.provider;
+    if (provider?.connect && !found.some((item) => item.provider === provider)) {
+      found.push({ provider, name: detail?.info?.name || "Solana wallet" });
+      window.__flashguysSolanaProviders = found;
+    }
+  };
+  window.addEventListener("wallet-standard:register", onAnnounce);
+  window.dispatchEvent(new Event("wallet-standard:app-ready"));
+  return () => window.removeEventListener("wallet-standard:register", onAnnounce);
 }
 
 function getEvmProvider() {
@@ -189,6 +205,11 @@ export default function AccountPanel({ onClose }) {
   }, [session?.user?.id, wallet?.address, wallet?.chain]);
 
   useEffect(() => {
+    const stopSolanaDiscovery = discoverSolanaProviders();
+    return () => stopSolanaDiscovery();
+  }, []);
+
+  useEffect(() => {
     const stopEvmDiscovery = discoverEvmProviders();
     return () => stopEvmDiscovery();
   }, []);
@@ -304,7 +325,7 @@ export default function AccountPanel({ onClose }) {
         const detected = getSolanaProvider();
         const provider = detected?.provider;
         if (!provider?.connect) {
-          throw new Error("FLASHGUYS cannot detect an injected Solana wallet in this browser. Install or unlock Phantom or Solflare, make sure the extension is enabled for this site, then reload the page. If already installed, open the wallet once and try again.");
+          throw new Error("FLASHGUYS could not find a compatible Solana wallet provider. Unlock your wallet and reload this page. If it is installed but still not detected, allow the extension on this site or try the wallet’s official browser extension.");
         }
         const result = await provider.connect();
         address = result?.publicKey?.toString?.() || provider.publicKey?.toString?.();

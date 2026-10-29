@@ -545,14 +545,14 @@ export default function AccountPanel({ onClose }) {
             <button type="button" className="wallet-button" onClick={() => connectWallet("evm")}><span className="wallet-symbol evm-symbol">◇</span><span><strong>Robinhood Chain</strong><small>Connect MetaMask or a compatible EVM wallet</small></span><b>Connect</b></button>
           </div>
         )}
-        {wallet?.address ? <div className="account-balance-card" aria-live="polite">
-          <div className="account-balance-top"><span className="account-label">LIVE WALLET VALUE</span>
-            <button type="button" className="account-secondary" onClick={() => refreshBalance(wallet)} disabled={balanceLoading}>{balanceLoading ? "Refreshing…" : "Refresh"}</button>
+        <div className="account-balance-card" aria-live="polite">
+          <div className="account-balance-top"><span className="account-label">CURRENT WALLET BALANCE</span>
+            <button type="button" className="account-secondary" onClick={() => refreshBalance(wallet)} disabled={balanceLoading || !wallet?.address}>{balanceLoading ? "Refreshing…" : "Refresh"}</button>
           </div>
           <div className="account-balance-total">{balance ? formatUsd(balance.usd) : "—"}</div>
-          <div className="account-balance-detail">{balanceLoading && !balance ? "Reading on-chain balance…" : balanceError || (balance ? `${balance.nativeAmount.toLocaleString("en-US", { maximumFractionDigits: 8 })} ${balance.symbol} · ${formatUsd(balance.price)} per ${balance.symbol}` : "Balance not loaded yet.")}</div>
+          <div className="account-balance-detail">{!wallet?.address ? "Wallet not connected. Connect Solana or Robinhood Chain below to load your live on-chain balance." : balanceLoading && !balance ? "Reading live balance from the blockchain…" : balanceError || (balance ? `${balance.nativeAmount.toLocaleString("en-US", { maximumFractionDigits: 8 })} ${balance.symbol} · ${formatUsd(balance.price)} per ${balance.symbol}` : "Balance not loaded yet. Select Refresh to try again.")}</div>
           {balance?.updatedAt ? <div className="account-balance-updated">Updated {new Date(balance.updatedAt).toLocaleTimeString()}</div> : null}
-        </div> : null}
+        </div>
         <p className="account-safety">FLASHGUYS never asks for your seed phrase or private key. Connecting a wallet does not send a transaction. The Robinhood Chain button requests an EVM wallet and verifies chain ID 4663 before reporting a successful connection.</p>
       </section>
     </div>

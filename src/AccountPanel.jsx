@@ -58,13 +58,28 @@ function getSolanaProvider() {
 }
 
 function getEvmProvider() {
-  const ethereum = window.ethereum;
-  if (!ethereum?.request) return null;
-  // MetaMask exposes multiple providers when several EVM wallet extensions
-  // are installed. Select MetaMask when present, otherwise use the injected
-  // EVM provider supplied by the browser wallet.
-  const providers = Array.isArray(ethereum.providers) ? ethereum.providers : [ethereum];
-  return providers.find((provider) => provider.isMetaMask) || providers[0] || null;
+  // Wallets may inject asynchronously or expose a provider list when several
+  // extensions are installed. Check common injection points before failing.
+  const candidates = [
+    window.ethereum,
+    window.metaMask,
+    window.okxwallet,
+    window.coinbaseWalletExtension,
+    window.coinbaseWallet,
+    window.trustwallet,
+    window.braveEthereum
+  ];
+  const providers = [];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const list = Array.isArray(candidate.providers) ? candidate.providers : [candidate];
+    for (const provider of list) {
+      if (provider?.request && !providers.includes(provider)) providers.push(provider);
+    }
+  }
+  return providers.find((provider) => provider.isMetaMask) ||
+    providers.find((provider) => provider.isCoinbaseWallet) ||
+    providers[0] || null;
 }
 
 async function authRequest(path, body, accessToken) {
@@ -290,7 +305,7 @@ export default function AccountPanel({ onClose }) {
         }
       } else {
         const provider = getEvmProvider();
-        if (!provider?.request) throw new Error("No EVM wallet was detected. Install MetaMask or another compatible wallet, then reload FLASHGUYS.");
+        if (!provider?.request) throw new Error("FLASHGUYS cannot detect an EVM wallet in this browser. Install or unlock MetaMask or another EVM wallet, enable its extension for this site, then reload the page. If already installed, open the wallet once and try again.");
         const accounts = await provider.request({ method: "eth_requestAccounts" });
         address = accounts?.[0] || "";
         if (!address) throw new Error("Wallet did not return a public address.");

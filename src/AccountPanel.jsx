@@ -73,6 +73,16 @@ function discoverSolanaProviders() {
   return () => window.removeEventListener("wallet-standard:register", onAnnounce);
 }
 
+async function findSolanaProvider() {
+  // Some extensions inject their provider after the page's initial scripts.
+  for (let attempt = 0; attempt < 15; attempt += 1) {
+    const provider = getSolanaProvider();
+    if (provider) return provider;
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  return getSolanaProvider();
+}
+
 function getEvmProvider() {
   // EIP-6963 is the modern discovery standard and works when multiple wallet
   // extensions coexist. The legacy injected providers remain a fallback.
@@ -119,13 +129,12 @@ function discoverEvmProviders() {
 }
 
 async function findEvmProvider() {
-  // Re-request announcements on click and allow extensions a short moment to
-  // answer. This avoids racing the EIP-6963 async provider announcement.
-  window.dispatchEvent(new Event("eip6963:requestProvider"));
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+  // Re-request announcements and wait for extension injection/announcement.
+  for (let attempt = 0; attempt < 15; attempt += 1) {
+    window.dispatchEvent(new Event("eip6963:requestProvider"));
     const provider = getEvmProvider();
     if (provider) return provider;
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 150));
   }
   return getEvmProvider();
 }
@@ -334,10 +343,10 @@ export default function AccountPanel({ onClose }) {
     try {
       let address = "";
       if (kind === "solana") {
-        const detected = getSolanaProvider();
+        const detected = await findSolanaProvider();
         const provider = detected?.provider;
         if (!provider?.connect) {
-          throw new Error("FLASHGUYS could not find a compatible Solana wallet provider. Unlock your wallet and reload this page. If it is installed but still not detected, allow the extension on this site or try the wallet’s official browser extension.");
+          throw new Error("No Solana wallet provider was detected after waiting for browser extensions. Check that Phantom/Solflare is enabled for this site and that this page is open in the same browser profile as the wallet.");
         }
         const result = await provider.connect();
         address = result?.publicKey?.toString?.() || provider.publicKey?.toString?.();
@@ -363,7 +372,7 @@ export default function AccountPanel({ onClose }) {
         }
       } else {
         const provider = getEvmProvider();
-        if (!provider?.request) throw new Error("No EVM wallet provider responded. Unlock your wallet extension, ensure it is enabled for this website, then click Connect Robinhood Chain again. If no wallet extension is installed, install MetaMask or another EVM wallet first.");
+        if (!provider?.request) throw new Error("No EVM wallet provider responded after waiting for browser extensions. Check that MetaMask is enabled for this site and that this page is open in the same Chrome profile as the wallet.");
         const accounts = await provider.request({ method: "eth_requestAccounts" });
         address = accounts?.[0] || "";
         if (!address) throw new Error("Wallet did not return a public address.");

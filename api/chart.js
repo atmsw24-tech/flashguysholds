@@ -89,6 +89,17 @@ export default async function handler(req, res) {
       .sort((a, b) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0));
     const pair = pricedPairs[0] || null;
     let price = Number(pair?.priceUsd || 0);
+    if (String(req.query?.liveOnly || "") === "1") {
+      if (!(price > 0) && fallbackPrice > 0) price = fallbackPrice;
+      if (!(price > 0)) return res.status(404).json({ error: "No live market quote is available yet.", address, chain: network });
+      return res.status(200).json({
+        address, chain: network, price,
+        marketCap: Number(pair?.marketCap || 0),
+        fdv: Number(pair?.fdv || 0),
+        updatedAt: new Date().toISOString(),
+        source: pair ? "DexScreener live quote" : "token-feed fallback",
+      });
+    }
     let history = [];
     let historyWarning = "";
     let poolAddress = "";

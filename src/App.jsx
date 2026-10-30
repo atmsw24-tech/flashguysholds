@@ -298,7 +298,32 @@ function PriceChart({ token }) {
       }
       finally{inFlight=false;if(!cancelled)setChartLoading(false);}
     }
-    setChartLoading(true);load();const refresh=setInterval(load,5000);
+    async function loadLiveQuote(){
+      if(inFlight||cancelled)return;
+      inFlight=true;
+      try{
+        const response=await fetch(`/api/chart?liveOnly=1&address=${encodeURIComponent(address)}&chain=${chain}&fallbackPrice=${encodeURIComponent(Number(token?.price||livePrice||0))}&_=${Date.now()}`,{cache:"no-store",headers:{Accept:"application/json"}});
+        const data=await response.json();
+        if(!response.ok)throw new Error(data.error||"Live quote unavailable");
+        if(cancelled)return;
+        const value=Number(data.price);
+        if(value>0){
+          setLivePrice(value);
+          const stamp=Date.now();
+          setHistory(previous=>{
+            const last=previous[previous.length-1];
+            if(last&&stamp-last.time<950)return [...previous.slice(0,-1),{...last,high:Math.max(Number(last.high||last.close),value),low:Math.min(Number(last.low||last.close),value),close:value,price:value}];
+            return [...previous,{time:stamp,open:Number(last?.close||value),high:Math.max(Number(last?.close||value),value),low:Math.min(Number(last?.close||value),value),close:value,price:value,volume:0,sampled:true}].slice(-240);
+          });
+          const cap=Number(data.marketCap||data.fdv||0);if(cap>0)setMarketCap(cap);
+          setUpdatedAt(new Date());setLiveConnected(true);
+        }
+      }catch(error){
+        // Keep the last verified quote visible; a missed one-second poll is not a zero price.
+      }finally{inFlight=false;}
+    }
+    setChartLoading(true);load();
+    const refresh=setInterval(loadLiveQuote,1000);
     return()=>{cancelled=true;clearInterval(refresh);if(chain==="sol")window.removeEventListener("flashguys:solana-update",handleUpdate)};
   },[token?.address,token?.mint,token?.chain,timeframe]);
 

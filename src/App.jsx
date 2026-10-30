@@ -485,6 +485,92 @@ function SolanaBuyPanel({ token }) {
   </section>;
 }
 
+function RobinhoodBuyPanel({ token }) {
+  const [amount, setAmount] = useState("0.01");
+  const [quote, setQuote] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [wallet, setWallet] = useState("");
+  const CHAIN = "0x1237";
+  const ETH = "0x0000000000000000000000000000000000000000";
+  const request = async (action, payload) => {
+    const res = await fetch("/api/robinhood-swap", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...payload }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Robinhood swap service failed.");
+    return data;
+  };
+  useEffect(() => {
+    try { const w = JSON.parse(localStorage.getItem("flashguys.connected.wallet") || "null"); if (w?.chain === "evm") setWallet(w.address || ""); } catch {}
+  }, []);
+  async function getQuote() {
+    setError(""); setMessage(""); setQuote(null);
+    if (!token.address || !/^0x[a-fA-F0-9]{40}$/.test(token.address)) return setError("A valid Robinhood Chain token contract address is required.");
+    const n = Number(amount);
+    if (!Number.isFinite(n) || n <= 0 || n > 100) return setError("Enter an amount greater than 0 and no more than 100 ETH.");
+    setBusy(true);
+    try {
+      const provider = window.ethereum;
+      if (!provider?.request) throw new Error("Connect Robinhood Wallet, MetaMask, or another EVM wallet first.");
+      const accounts = await provider.request({ method: "eth_requestAccounts" });
+      if (!accounts?.[0]) throw new Error("Wallet connection was not approved.");
+      let chainId = String(await provider.request({ method: "eth_chainId" })).toLowerCase();
+      if (chainId !== CHAIN) {
+        try { await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CHAIN }] }); }
+        catch (e) {
+          if (e?.code !== 4902) throw e;
+          await provider.request({ method: "wallet_addEthereumChain", params: [{ chainId: CHAIN, chainName: "Robinhood Chain", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: ["https://rpc.mainnet.chain.robinhood.com"], blockExplorerUrls: ["https://robinhoodchain.blockscout.com"] }] });
+          await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CHAIN }] });
+        }
+      }
+      chainId = String(await provider.request({ method: "eth_chainId" })).toLowerCase();
+      if (chainId !== CHAIN) throw new Error("Switch your wallet to Robinhood Chain (4663).");
+      const address = accounts[0]; setWallet(address);
+      const w = { chain: "evm", walletName: "EVM wallet", address, chainId: CHAIN, connectedAt: new Date().toISOString() };
+      localStorage.setItem("flashguys.connected.wallet", JSON.stringify(w)); window.dispatchEvent(new Event("flashguys:wallet"));
+      const data = await request("quote", { tokenIn: ETH, tokenOut: token.address, amount: BigInt(Math.floor(n * 1e6)) * 1000000000000n + BigInt(Math.round((n * 1e18) % 1e12)), swapper: address });
+      if (!data.quote) throw new Error(data.error || "No Uniswap route returned for this token.");
+      if (["DUTCH_V2", "DUTCH_V3", "PRIORITY"].includes(data.routing)) throw new Error("This quote requires UniswapX order signing, which is not enabled in this version. Try another route or token.");
+      setQuote(data); setMessage("Quote simulated by Uniswap. No transaction has been sent.");
+    } catch (e) { setError(e.message || "Could not get a Robinhood Chain quote."); }
+    finally { setBusy(false); }
+  }
+  async function buy() {
+    if (!quote) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const provider = window.ethereum;
+      const accounts = await provider.request({ method: "eth_requestAccounts" });
+      const address = accounts?.[0];
+      if (!address) throw new Error("Connect your EVM wallet first.");
+      if (String(await provider.request({ method: "eth_chainId" })).toLowerCase() !== CHAIN) throw new Error("Select Robinhood Chain (4663) in your wallet before buying.");
+      const swapData = await request("swap", { quote: quote.quote });
+      const tx = swapData.swap || swapData.swapTransaction;
+      if (!tx?.to || !tx?.data) throw new Error("Uniswap did not return executable transaction data.");
+      const txHash = await provider.request({ method: "eth_sendTransaction", params: [{ from: address, to: tx.to, data: tx.data, value: tx.value || "0x0", ...(tx.gasLimit ? { gas: tx.gasLimit } : {}), ...(tx.maxFeePerGas ? { maxFeePerGas: tx.maxFeePerGas } : {}), ...(tx.maxPriorityFeePerGas ? { maxPriorityFeePerGas: tx.maxPriorityFeePerGas } : {}), ...(tx.gasPrice ? { gasPrice: tx.gasPrice } : {}) }] });
+      setMessage(`Transaction submitted: ${txHash}. Track confirmation in Robinhood Chain Explorer.`); setQuote(null);
+    } catch (e) { setError(e.message || "Swap failed or was cancelled."); }
+    finally { setBusy(false); }
+  }
+  const output = quote?.quote?.output?.amount || quote?.quote?.output?.amountOut || "";
+  return <section className="token-activity-subpanel solana-buy-panel">
+    <div className="token-activity-subheading"><strong>Buy {token.symbol || "token"} with ETH</strong><span>Robinhood Chain · Uniswap</span></div>
+    <p className="activity-unavailable">Live Uniswap route quote. Purchases use real ETH on Robinhood Chain and require wallet approval. ETH gas fees apply.</p>
+    <label htmlFor="fg-rh-buy-eth">Amount (ETH)</label>
+    <input id="fg-rh-buy-eth" type="number" min="0.000001" max="100" step="0.001" value={amount} onChange={e => { setAmount(e.target.value); setQuote(null); }} />
+    <button type="button" className="account-primary" onClick={getQuote} disabled={busy}>{busy ? "Please wait…" : "Get Uniswap quote"}</button>
+    {quote ? <div className="solana-buy-quote">
+      <div><span>Estimated output (base units)</span><strong>{output ? Number(output).toLocaleString("en-US") : "See quote details"}</strong></div>
+      <div><span>Routing</span><strong>{quote.routing || "Uniswap"}</strong></div>
+      <div><span>Estimated gas (USD)</span><strong>{quote.quote?.classicGasUseEstimateUSD || "Not supplied"}</strong></div>
+      <button type="button" className="account-primary" onClick={buy} disabled={busy}>{busy ? "Waiting for wallet…" : "Confirm buy in wallet"}</button>
+    </div> : null}
+    {message ? <p className="account-message" role="status">{message}</p> : null}
+    {error ? <p className="account-message" role="alert">{error}</p> : null}
+    <small>Wallet: {wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-5)}` : "Not connected"}</small>
+  </section>;
+}
+
 function TokenModal({ token, onClose, watched, onToggleWatch }) {
   if (!token) return null;
 
@@ -579,7 +665,7 @@ function TokenModal({ token, onClose, watched, onToggleWatch }) {
             </div>
           </div>
 
-          {token.chain === "robinhood" ? null : <SolanaBuyPanel token={token} />}\n\n          <div className="chart-container">
+          {token.chain === "robinhood" ? null : <SolanaBuyPanel token={token} />}\n\n          {token.chain === "robinhood" ? <RobinhoodBuyPanel token={token} /> : <SolanaBuyPanel token={token} />}\n\n          <div className="chart-container">
             <div className="chart-title">Price Chart</div>
             <PriceChart token={token} />
           </div>

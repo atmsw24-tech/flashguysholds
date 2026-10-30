@@ -1274,7 +1274,7 @@ export default function App() {
               setPage("launch")
             }
           >
-            Launch
+            Launchpad
           </button>
         </nav>
         <button type="button" className="flashboys-launch-cta" onClick={() => setPage("launch")} aria-label="Open FLASHBOYS token launch options"><span className="flashboys-launch-bolt" aria-hidden="true">⚡</span><span>Launch FLASHBOYS</span></button>
@@ -1285,7 +1285,7 @@ export default function App() {
 
       <main className="main">
         {page === "launch" ? (
-          <LaunchPage />
+          <LaunchPage tokens={tokens} />
         ) : page === "rewards" ? (
           <HolderRewardsPage />
         ) : (

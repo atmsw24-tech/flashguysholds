@@ -1323,3 +1323,61 @@ html, body, #root {
 .sol-buy-receive{margin:12px 0 0;padding:14px 15px;border:1px solid rgba(255,255,255,.055);border-radius:12px;background:rgba(255,255,255,.025)}.sol-buy-receive>strong{font-size:15px;text-align:right}.sol-buy-receive small{color:#b8a4e9;font-size:11px}.sol-buy-note{margin:12px 1px;color:#9290a4;font-size:10px;line-height:1.65}.sol-buy-details{display:grid;gap:8px;margin:12px 0;padding:12px;border-radius:10px;background:rgba(255,255,255,.035)}.sol-buy-details div{display:flex;justify-content:space-between;gap:12px;font-size:10px}.sol-buy-details span{color:#9290a4}.sol-buy-details strong{color:#e7defc}
 .sol-buy-cta{display:flex;justify-content:center;align-items:center;gap:12px;width:100%;margin-top:14px;padding:14px 16px;border:1px solid rgba(204,184,255,.35);border-radius:11px;background:linear-gradient(100deg,#8055dc,#a17af4 55%,#7651cb);color:#fff;font-size:12px;font-weight:850;box-shadow:0 8px 22px rgba(119,78,204,.22);cursor:pointer;transition:transform .16s,filter .16s}.sol-buy-cta:hover:not(:disabled){transform:translateY(-1px);filter:brightness(1.08)}.sol-buy-cta:disabled{opacity:.55;cursor:wait}.sol-buy-cta span{font-size:17px}.sol-buy-feedback{margin:11px 0 0;color:#c8b5ff;font-size:10px;line-height:1.5;overflow-wrap:anywhere}.sol-buy-feedback.is-error{color:#ff9baf}.sol-buy-footer{justify-content:flex-start;margin-top:15px;padding-top:12px;border-top:1px solid rgba(255,255,255,.07);color:#89859c;font-size:9px}.sol-buy-secure{margin-left:auto;color:#9e8bc7;font-size:8px;font-weight:800;letter-spacing:.8px}
 @media(max-width:520px){.sol-buy-card{padding:16px;margin:14px 0;border-radius:15px}.sol-buy-heading{margin:17px 0 19px}.sol-buy-heading h3{font-size:17px}.sol-buy-amount-box input{font-size:22px!important}}
+
+
+/* FLASHBOYS Robinhood launchpad */
+.fb-launchpad{width:min(1280px,calc(100% - 32px));margin:34px auto 70px;color:#f7f4ff}
+.fb-launchpad-hero{position:relative;overflow:hidden;padding:clamp(24px,5vw,58px);border:1px solid rgba(173,112,255,.24);border-radius:26px;background:radial-gradient(ellipse at 82% 0%,rgba(138,75,255,.24),transparent 42%),linear-gradient(135deg,#151020,#0d0d16 70%);box-shadow:0 24px 80px rgba(0,0,0,.28)}
+.fb-launchpad-kicker,.fb-section-eyebrow{font-size:10px;font-weight:900;letter-spacing:.16em;color:#bd8aff}
+.fb-live-pulse{display:inline-block;width:7px;height:7px;margin-right:8px;border-radius:50%;background:#8bf0bd;box-shadow:0 0 12px #8bf0bd}
+.fb-launchpad-hero-row{display:flex;justify-content:space-between;align-items:center;gap:24px;margin-top:20px}
+.fb-launchpad-hero h1{margin:0;font-size:clamp(34px,5.5vw,64px);letter-spacing:-.055em;line-height:1.02;font-weight:900}
+.fb-launchpad-hero h1 span{background:linear-gradient(90deg,#fff,#c99aff,#8e69ff);background-clip:text;-webkit-background-clip:text;color:transparent}
+.fb-launchpad-hero p{max-width:650px;color:#aaa2b9;line-height:1.7;margin:16px 0 0}
+.fb-create-launch,.fb-connect-wallet{border:0;border-radius:12px;padding:14px 20px;color:white;font-weight:850;background:linear-gradient(110deg,#9857f6,#6535d4);box-shadow:0 10px 30px #793de333;white-space:nowrap}
+.fb-launchpad-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:38px}
+.fb-launchpad-stats div{padding:14px 16px;border:1px solid #ffffff12;border-radius:12px;background:#ffffff08;min-width:0}
+.fb-launchpad-stats small,.fb-token-metrics small{display:block;color:#827a91;font-size:9px;font-weight:900;letter-spacing:.13em;margin-bottom:7px}
+.fb-launchpad-stats strong{font-size:13px;overflow-wrap:anywhere}
+.fb-create-panel{margin-top:20px;padding:26px;border:1px solid #a36aff44;border-radius:20px;background:linear-gradient(145deg,#171124,#0d0e16)}
+.fb-create-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:22px}
+.fb-create-heading h2,.fb-launch-toolbar h2{margin:7px 0;font-size:25px;letter-spacing:-.04em}
+.fb-create-heading p{max-width:700px;color:#a49caf;line-height:1.6;margin:0}
+.fb-protocol-status{padding:8px 10px;border-radius:8px;background:#ffbd5918;border:1px solid #ffbd5940;color:#ffcf83;font-size:9px;font-weight:900;letter-spacing:.1em;white-space:nowrap}
+.fb-create-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.fb-create-grid label{display:flex;flex-direction:column;gap:8px;color:#c9c2d3;font-size:12px;font-weight:750}
+.fb-create-grid .fb-wide{grid-column:1/-1}
+.fb-create-grid input,.fb-create-grid textarea{width:100%;min-width:0;border:1px solid #ffffff18;border-radius:10px;padding:12px 13px;color:#fff;background:#090a11;outline:none}
+.fb-create-grid textarea{min-height:90px;resize:vertical}
+.fb-create-grid input:focus,.fb-create-grid textarea:focus{border-color:#a56bff}
+.fb-create-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+.fb-launch-disabled{border:1px solid #ffffff16;border-radius:11px;padding:13px 18px;background:#ffffff0a;color:#8c8499;font-weight:800;cursor:not-allowed}
+.fb-wallet-message{color:#c8a5ff;font-size:12px;overflow-wrap:anywhere}
+.fb-protocol-note{margin-top:18px;padding:14px 16px;border:1px solid #ffbd5930;border-radius:11px;background:#ffbd590b;color:#bdb3c6;font-size:12px;line-height:1.65}
+.fb-protocol-note strong{color:#ffd28c}
+.fb-launch-toolbar{display:flex;justify-content:space-between;align-items:end;gap:18px;margin:38px 0 17px}
+.fb-launch-filters{display:flex;gap:6px;flex-wrap:wrap;padding:5px;border:1px solid #ffffff12;border-radius:12px;background:#111019}
+.fb-launch-filters button{border:0;border-radius:8px;padding:9px 13px;background:transparent;color:#9991a7;font-size:12px;font-weight:800}
+.fb-launch-filters button.active{background:#783fd4;color:white}
+.fb-launch-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.fb-launch-token{padding:18px;border:1px solid #ffffff12;border-radius:17px;background:linear-gradient(150deg,#15121d,#0e0f16);transition:border-color .18s,transform .18s}
+.fb-launch-token:hover{border-color:#a36aff77;transform:translateY(-2px)}
+.fb-launch-token-top{display:flex;align-items:center;justify-content:space-between}
+.fb-launch-token-logo{width:42px;height:42px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(135deg,#a45cff,#5631a9);font-size:18px;font-weight:900}
+.fb-token-stage{padding:6px 8px;border-radius:7px;background:#a56bff16;color:#c69bff;font-size:9px;font-weight:900;letter-spacing:.1em}
+.fb-token-stage.graduated{background:#42d99a16;color:#73e8b0}
+.fb-launch-token h3{margin:16px 0 3px;font-size:17px}
+.fb-token-ticker{margin:0;color:#938a9e;font-size:12px}
+.fb-token-metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:18px 0 14px;padding:12px 0;border-top:1px solid #ffffff10;border-bottom:1px solid #ffffff10}
+.fb-token-metrics strong{font-size:15px}
+.fb-token-address{color:#888094;font-family:monospace;font-size:11px}
+.fb-launch-token>a{display:inline-block;margin-top:14px;color:#c39aff;font-size:12px;font-weight:800}
+.fb-launch-empty{padding:60px 20px;text-align:center;border:1px dashed #ffffff20;border-radius:18px;background:#ffffff05}
+.fb-launch-empty>div{font-size:30px;color:#bb8aff}
+.fb-launch-empty h3{margin:10px 0}
+.fb-launch-empty p{color:#968da1}
+.fb-launch-empty button{margin-top:8px;padding:10px 15px;border:1px solid #9a66ed66;border-radius:9px;background:#8c4ce51c;color:#d7baff;font-weight:800}
+.fb-launchpad-footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-top:34px;padding-top:18px;border-top:1px solid #ffffff12;color:#8b8296;font-size:10px;font-weight:800;letter-spacing:.08em}
+.fb-launchpad-footer a{color:#c09aff}
+@media(max-width:760px){.fb-launchpad{width:calc(100% - 22px);margin-top:18px}.fb-launchpad-hero-row,.fb-launch-toolbar,.fb-create-heading{align-items:flex-start;flex-direction:column}.fb-launchpad-stats{grid-template-columns:repeat(2,minmax(0,1fr));margin-top:24px}.fb-launch-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.fb-protocol-status{white-space:normal}.fb-create-panel{padding:18px}}
+@media(max-width:480px){.fb-launch-grid{grid-template-columns:1fr}.fb-create-grid{grid-template-columns:1fr}.fb-create-grid .fb-wide{grid-column:auto}.fb-launch-filters{width:100%;overflow:auto}.fb-launch-filters button{white-space:nowrap}.fb-create-launch{width:100%}}

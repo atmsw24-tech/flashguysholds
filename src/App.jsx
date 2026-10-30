@@ -331,11 +331,16 @@ function PriceChart({ token }) {
   const width=920,height=390,left=16,right=86,top=22,bottom=42,volumeHeight=showVolume?68:0,gap=showVolume?12:0;
   const plotW=width-left-right,plotH=height-top-bottom-volumeHeight-gap;
   const current=Number(livePrice||token?.price||0);
-  // Historical candles stay in the original price units returned by the API.
-  // Today's implied supply cannot produce trustworthy historical market caps.
   const currentMcap=Number(marketCap||token?.marketCap||0);
-  const chartCandles=candles;
-  const displayCurrent=current;
+  // Convert historical price candles to implied market-cap values using the
+  // latest reported market-cap/price ratio. Label this estimate clearly because
+  // historical circulating supply is not supplied by the market-data API.
+  const mcapMultiplier=current>0&&currentMcap>0?currentMcap/current:0;
+  const hasMcapSeries=mcapMultiplier>0;
+  const toMcap=value=>hasMcapSeries?Number(value)*mcapMultiplier:Number(value);
+  const chartCandles=candles.map(c=>({...c,open:toMcap(c.open),high:toMcap(c.high),low:toMcap(c.low),close:toMcap(c.close),price:toMcap(c.price)}));
+  const displayCurrent=hasMcapSeries?currentMcap:current;
+  const graphUnit=hasMcapSeries?"MCAP":"PRICE";
   const lows=chartCandles.map(p=>Number(p.low??p.close)).filter(Number.isFinite),highs=chartCandles.map(p=>Number(p.high??p.close)).filter(Number.isFinite);
   // Include the latest quote in the scale; otherwise a fast move can put the live
   // line/current-price marker outside the historical candle range and make the chart look broken.
@@ -358,9 +363,9 @@ function PriceChart({ token }) {
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(112px,1fr))",gap:8,margin:"12px 0",padding:"10px 12px",border:"1px solid rgba(168,85,247,.18)",borderRadius:10,background:"rgba(168,85,247,.055)"}}>
       {[["MARKET CAP",currentMcap>0?priceFmt(currentMcap):"Unavailable"],["PRICE",current>0?priceFmt(current):"Unavailable"],["LIQUIDITY",Number(token?.liquidity)>0?priceFmt(Number(token.liquidity)):"Unavailable"],["24H VOLUME",Number(token?.volume24h)>0?priceFmt(Number(token.volume24h)):"Unavailable"],["24H CHANGE",token?.change24h!==undefined&&token?.change24h!==null&&Number.isFinite(Number(token.change24h))?(Number(token.change24h)>=0?"+":"")+Number(token.change24h).toFixed(2)+"%":"Unavailable"],["HOLDERS",Number(token?.holders??token?.holderCount)>0?Number(token.holders??token.holderCount).toLocaleString():"Unavailable"],["BUYS / SELLS",token?.buys24h!=null&&token?.sells24h!=null?Number(token.buys24h).toLocaleString()+" / "+Number(token.sells24h).toLocaleString():"Unavailable"]].map(([label,value])=><div key={label} style={{minWidth:0}}><div style={{fontSize:9,letterSpacing:".09em",color:"#9299a8",marginBottom:5}}>{label}</div><div style={{fontSize:12,fontWeight:700,color:"#f3efff",overflowWrap:"anywhere"}}>{value}</div></div>)}
     </div>
-    <div className="refined-ohlc-strip">{active?<><span><i>O</i>{priceFmt(active.open??active.close)}</span><span><i>H</i>{priceFmt(active.high??active.close)}</span><span><i>L</i>{priceFmt(active.low??active.close)}</span><span><i>C</i>{priceFmt(active.close??active.price)}</span></>:<span>OHLC values are original price candles returned by the market-data source</span>}</div>
+    <div className="refined-ohlc-strip">{active?<><span><i>O</i>{priceFmt(active.open??active.close)}</span><span><i>H</i>{priceFmt(active.high??active.close)}</span><span><i>L</i>{priceFmt(active.low??active.close)}</span><span><i>C</i>{priceFmt(active.close??active.price)}</span></>:<span>OHLC values are displayed in the selected graph units</span>}</div>
     {chartCandles.length>=1?<div className="gmgn-candle-chart refined-candle-chart">
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Price chart for ${token?.symbol||"token"}, ${timeframe} timeframe`} preserveAspectRatio="none" style={{width:"100%",minWidth:"760px",height:"auto",display:"block"}}>
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${graphUnit} chart for ${token?.symbol||"token"}, ${timeframe} timeframe`} preserveAspectRatio="none" style={{width:"100%",minWidth:"760px",height:"auto",display:"block"}}>
         <defs><linearGradient id="refinedChartGlow" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#35d49a" stopOpacity=".13"/><stop offset="100%" stopColor="#35d49a" stopOpacity="0"/></linearGradient></defs>
         {[0,1,2,3,4].map(i=>{const yy=top+plotH*i/4,val=maxPrice-range*i/4;return <g key={i}><line x1={left} x2={width-right+3} y1={yy} y2={yy} stroke="#202936" strokeWidth="1"/><text x={width-right+10} y={yy+4} fill="#8490a0" fontSize="11">{priceFmt(val)}</text></g>})}
         {chartType==="line" ? <><defs><linearGradient id="flashLineFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#a855f7" stopOpacity=".25"/><stop offset="100%" stopColor="#a855f7" stopOpacity="0"/></linearGradient></defs><path d={`M ${chartCandles.map((c,i)=>`${left+i*step+step/2} ${y(Number(c.close??c.price))}`).join(" L ")} L ${left+(chartCandles.length-1)*step+step/2} ${top+plotH} L ${left+step/2} ${top+plotH} Z`} fill="url(#flashLineFill)"/><polyline points={chartCandles.map((c,i)=>`${left+i*step+step/2},${y(Number(c.close??c.price))}`).join(" ")} fill="none" stroke="#b875ff" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke"/>{chartCandles.length===1?<circle cx={left+step/2} cy={y(Number(chartCandles[0].close??chartCandles[0].price))} r="4" fill="#b875ff" stroke="#f3e8ff" strokeWidth="1.5"/>:null}</> : chartCandles.map((c,i)=>{const open=Number(c.open??c.close),close=Number(c.close??c.price),high=Number(c.high??Math.max(open,close)),low=Number(c.low??Math.min(open,close)),xx=left+i*step+step/2,up=close>=open,color=up?"#35d49a":"#f06b7b",bodyY=Math.min(y(open),y(close)),bodyH=Math.max(1.5,Math.abs(y(open)-y(close)));return <g key={c.time+"-"+i} onMouseEnter={()=>setHovered(c)} onMouseLeave={()=>setHovered(null)}><rect x={xx-step/2} y={top} width={step} height={plotH+(showVolume?gap+volumeHeight:0)} fill="transparent"/><line x1={xx} x2={xx} y1={y(high)} y2={y(low)} stroke={color} strokeWidth="1.15"/><rect x={xx-candleWidth/2} y={bodyY} width={candleWidth} height={bodyH} rx=".7" fill={color}/></g>})}
@@ -371,7 +376,7 @@ function PriceChart({ token }) {
       </svg>
       {hovered?<div className="gmgn-candle-tooltip refined-tooltip"><strong>{new Date(hovered.time).toLocaleString()}</strong><span>O {priceFmt(hovered.open??hovered.close)}</span><span>H {priceFmt(hovered.high??hovered.close)}</span><span>L {priceFmt(hovered.low??hovered.close)}</span><span>C {priceFmt(hovered.close??hovered.price)}</span></div>:null}
     </div>:<div className="gmgn-chart-placeholder refined-chart-placeholder"><div className="refined-placeholder-icon">⌁</div><strong>{chartLoading?"Loading market candles…":"Waiting for candle history"}</strong><span>{displayCurrent>0?"Latest market cap "+priceFmt(displayCurrent):"Market cap is not available yet."}</span></div>}
-    <div className="gmgn-chart-footer"><span>● PRICE candles · {timeframe}</span><span>{chartCandles.filter(c=>!c.sampled).length} historical candles{chartCandles.some(c=>c.sampled)?" · observed price samples":""} {showVolume?"· Volume":" "}</span></div>
+    <div className="gmgn-chart-footer"><span>● {graphUnit} {hasMcapSeries?"(estimated)":"candles"} · {timeframe}</span><span>{hasMcapSeries?"Historical MCAP implied from latest reported supply ratio · ":""}{chartCandles.filter(c=>!c.sampled).length} historical candles{chartCandles.some(c=>c.sampled)?" · observed price samples":""} {showVolume?"· Volume":" "}</span></div>
     {chartError?<div className="chart-empty">{chartError}</div>:null}
   </div>;
 }

@@ -406,6 +406,85 @@ function TokenXFeed({ token }) {
   </section>;
 }
 
+function SolanaBuyPanel({ token }) {
+  const [amount, setAmount] = useState("0.01");
+  const [quote, setQuote] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [walletAddress, setWalletAddress] = useState("");
+  const SOL = "So11111111111111111111111111111111111111112";
+  const API = "https://lite-api.jup.ag/swap/v1";
+  useEffect(() => {
+    const read = () => { try { const w = JSON.parse(localStorage.getItem("flashguys.connected.wallet") || "null"); setWalletAddress(w?.chain === "solana" ? w.address || "" : ""); } catch { setWalletAddress(""); } };
+    read(); window.addEventListener("storage", read); window.addEventListener("flashguys:wallet", read);
+    return () => { window.removeEventListener("storage", read); window.removeEventListener("flashguys:wallet", read); };
+  }, []);
+  const provider = () => window.phantom?.solana || (window.solana?.isPhantom ? window.solana : null) || window.solflare || window.solana;
+  async function getQuote() {
+    setError(""); setMessage(""); setQuote(null);
+    if (token.chain === "robinhood") return setError("Jupiter supports Solana swaps only.");
+    if (!token.address || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(token.address)) return setError("A valid Solana mint address is required.");
+    const n = Number(amount);
+    if (!Number.isFinite(n) || n <= 0 || n > 100) return setError("Enter an amount greater than 0 and no more than 100 SOL.");
+    setBusy(true);
+    try {
+      const res = await fetch(`${API}/quote?inputMint=${SOL}&outputMint=${encodeURIComponent(token.address)}&amount=${Math.floor(n * 1e9)}&slippageBps=100`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || data.message || "Jupiter quote request failed.");
+      if (!data.outAmount || !Array.isArray(data.routePlan) || !data.routePlan.length) throw new Error("Jupiter returned no executable route for this token.");
+      setQuote(data); setMessage("Live quote received. No funds have been spent and no transaction has been sent.");
+    } catch (e) { setError(e.message || "Could not retrieve a Jupiter quote."); }
+    finally { setBusy(false); }
+  }
+  async function buy() {
+    if (!quote) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const p = provider();
+      if (!p) throw new Error("Phantom or a compatible Solana wallet is not detected. Install/unlock it, then try again.");
+      const connected = await p.connect();
+      const pubkey = connected?.publicKey || p.publicKey;
+      if (!pubkey) throw new Error("Wallet connection was not approved.");
+      const address = pubkey.toString(); setWalletAddress(address);
+      localStorage.setItem("flashguys.connected.wallet", JSON.stringify({ chain: "solana", address, name: p.isPhantom ? "Phantom" : "Solana wallet" }));
+      window.dispatchEvent(new Event("flashguys:wallet"));
+      const res = await fetch(`${API}/swap`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ quoteResponse: quote, userPublicKey: address, wrapAndUnwrapSol: true, dynamicComputeUnitLimit: true, prioritizationFeeLamports: "auto" }) });
+      const data = await res.json();
+      if (!res.ok || !data.swapTransaction) throw new Error(data.error || data.message || "Jupiter did not provide a swap transaction.");
+      const { VersionedTransaction } = await import("@solana/web3.js");
+      const bytes = Uint8Array.from(atob(data.swapTransaction), ch => ch.charCodeAt(0));
+      const tx = VersionedTransaction.deserialize(bytes);
+      const signed = await p.signTransaction(tx);
+      const serialized = signed.serialize();
+      let binary = ""; for (let i = 0; i < serialized.length; i += 0x8000) binary += String.fromCharCode(...serialized.subarray(i, i + 0x8000));
+      const rpc = await fetch("https://api.mainnet-beta.solana.com", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "sendTransaction", params: [btoa(binary), { encoding: "base64", maxRetries: 3, preflightCommitment: "confirmed" }] }) });
+      const result = await rpc.json();
+      if (!rpc.ok || result.error) throw new Error(result.error?.message || "Solana RPC rejected the transaction.");
+      setMessage(`Transaction submitted: ${result.result}. Check Solscan for confirmation.`); setQuote(null);
+    } catch (e) { setError(e.message || "Swap failed or was cancelled."); }
+    finally { setBusy(false); }
+  }
+  const out = quote && token.decimals != null ? (Number(quote.outAmount) / Math.pow(10, Number(token.decimals))).toLocaleString("en-US", { maximumFractionDigits: 6 }) : null;
+  return <section className="token-activity-subpanel solana-buy-panel">
+    <div className="token-activity-subheading"><strong>Buy {token.symbol || "token"} with SOL</strong><span>Jupiter</span></div>
+    <p className="activity-unavailable">Get a live route quote first. Buying uses real SOL and requires explicit approval in your wallet. Quote requests never spend funds.</p>
+    <label htmlFor="fg-buy-sol">Amount (SOL)</label>
+    <input id="fg-buy-sol" type="number" min="0.000001" max="100" step="0.001" value={amount} onChange={e => { setAmount(e.target.value); setQuote(null); }} />
+    <button type="button" className="account-primary" onClick={getQuote} disabled={busy}>{busy ? "Please wait…" : "Get Jupiter quote"}</button>
+    {quote ? <div className="solana-buy-quote">
+      <div><span>Estimated output</span><strong>{out ? `${out} ${token.symbol || "tokens"}` : `${quote.outAmount} base units (token decimals unavailable)`}</strong></div>
+      <div><span>Price impact</span><strong>{quote.priceImpactPct != null ? `${Number(quote.priceImpactPct).toFixed(3)}%` : "Not supplied"}</strong></div>
+      <div><span>Route hops</span><strong>{quote.routePlan.length}</strong></div>
+      <div><span>Slippage tolerance</span><strong>1.00%</strong></div>
+      <button type="button" className="account-primary" onClick={buy} disabled={busy}>{busy ? "Waiting for wallet…" : "Confirm buy in Phantom"}</button>
+    </div> : null}
+    {message ? <p className="account-message" role="status">{message}</p> : null}
+    {error ? <p className="account-message" role="alert">{error}</p> : null}
+    <small>Connected wallet: {walletAddress ? `${walletAddress.slice(0, 6)}…${walletAddress.slice(-5)}` : "Not connected"}</small>
+  </section>;
+}
+
 function TokenModal({ token, onClose, watched, onToggleWatch }) {
   if (!token) return null;
 
@@ -500,7 +579,7 @@ function TokenModal({ token, onClose, watched, onToggleWatch }) {
             </div>
           </div>
 
-          <div className="chart-container">
+          {token.chain === "robinhood" ? null : <SolanaBuyPanel token={token} />}\n\n          <div className="chart-container">
             <div className="chart-title">Price Chart</div>
             <PriceChart token={token} />
           </div>

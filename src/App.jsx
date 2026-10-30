@@ -410,6 +410,7 @@ function TokenXFeed({ token }) {
 
 function SolanaBuyPanel({ token }) {
   const [amount, setAmount] = useState("0.01");
+  const [side, setSide] = useState("buy");
   const [quote, setQuote] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -430,7 +431,11 @@ function SolanaBuyPanel({ token }) {
     if (!Number.isFinite(n) || n <= 0 || n > 100) return setError("Enter an amount greater than 0 and no more than 100 SOL.");
     setBusy(true);
     try {
-      const res = await fetch(`${API}/quote?inputMint=${SOL}&outputMint=${encodeURIComponent(token.address)}&amount=${Math.floor(n * 1e9)}&slippageBps=100`);
+      const inputMint = side === "buy" ? SOL : token.address;
+      const outputMint = side === "buy" ? token.address : SOL;
+      const inputDecimals = side === "buy" ? 9 : Number(token.decimals ?? 0);
+      if (side === "sell" && (!Number.isInteger(inputDecimals) || inputDecimals < 0 || inputDecimals > 18)) throw new Error("Token decimals are unavailable; cannot safely prepare a sell quote.");
+      const res = await fetch(`${API}/quote?inputMint=${encodeURIComponent(inputMint)}&outputMint=${encodeURIComponent(outputMint)}&amount=${Math.floor(n * Math.pow(10, inputDecimals))}&slippageBps=100`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || data.message || "Jupiter quote request failed.");
       if (!data.outAmount || !Array.isArray(data.routePlan) || !data.routePlan.length) throw new Error("Jupiter returned no executable route for this token.");
@@ -465,15 +470,15 @@ function SolanaBuyPanel({ token }) {
     } catch (e) { setError(e.message || "Swap failed or was cancelled."); }
     finally { setBusy(false); }
   }
-  const out = quote && token.decimals != null ? (Number(quote.outAmount) / Math.pow(10, Number(token.decimals))).toLocaleString("en-US", { maximumFractionDigits: 6 }) : null;
+  const out = quote && token.decimals != null ? (Number(quote.outAmount) / Math.pow(10, side === "buy" ? Number(token.decimals) : 9)).toLocaleString("en-US", { maximumFractionDigits: 6 }) : null;
   return <section className="sol-buy-card">
     <div className="sol-buy-topline"><span className="sol-buy-live"><i /> IN-APP SWAP</span><span className="sol-buy-network">SOLANA MAINNET</span></div>
-    <div className="sol-buy-heading"><div className="sol-buy-coin-icon">ϟ</div><div><h3>Buy {token.symbol || "token"}</h3><p>Swap SOL for {token.symbol || "this token"}</p></div><span className="sol-buy-provider">JUP<span>ITER</span></span></div>
-    <div className="sol-buy-input-label"><label htmlFor="fg-buy-sol">YOU PAY</label><span>Native asset · SOL</span></div>
-    <div className="sol-buy-amount-box"><input id="fg-buy-sol" type="number" min="0.000001" max="100" step="0.001" value={amount} onChange={e => { setAmount(e.target.value); setQuote(null); }} /><strong>SOL</strong></div>
-    <div className="sol-buy-receive"><span>YOU RECEIVE</span><strong>{quote ? (out ? out : Number(quote.outAmount).toLocaleString("en-US")) : "—"} <small>{token.symbol || "TOKEN"}</small></strong></div>
+    <div style={{display:"flex",gap:8,marginBottom:12}}><button type="button" className={side==="buy"?"sol-buy-cta":"refined-volume-toggle"} onClick={()=>{setSide("buy");setQuote(null);}}>Buy</button><button type="button" className={side==="sell"?"sol-buy-cta":"refined-volume-toggle"} onClick={()=>{setSide("sell");setQuote(null);}}>Sell</button></div><div className="sol-buy-heading"><div className="sol-buy-coin-icon">ϟ</div><div><h3>Buy {token.symbol || "token"}</h3><p>Swap SOL for {token.symbol || "this token"}</p></div><span className="sol-buy-provider">JUP<span>ITER</span></span></div>
+    <div className="sol-buy-input-label"><label htmlFor="fg-buy-sol">YOU PAY</label><span>{side === "buy" ? "Native asset · SOL" : "Token · " + (token.symbol || "TOKEN")}</span></div>
+    <div className="sol-buy-amount-box"><input id="fg-buy-sol" type="number" min="0.000001" max="100" step="0.001" value={amount} onChange={e => { setAmount(e.target.value); setQuote(null); }} /><strong>{side === "buy" ? "SOL" : (token.symbol || "TOKEN")}</strong></div>
+    <div className="sol-buy-receive"><span>YOU RECEIVE</span><strong>{quote ? (out ? out : Number(quote.outAmount).toLocaleString("en-US")) : "—"} <small>{side === "buy" ? (token.symbol || "TOKEN") : "SOL"}</small></strong></div>
     {quote ? <div className="sol-buy-details"><div><span>Price impact</span><strong>{quote.priceImpactPct != null ? `${Number(quote.priceImpactPct).toFixed(3)}%` : "Not supplied"}</strong></div><div><span>Route hops</span><strong>{quote.routePlan.length}</strong></div><div><span>Slippage</span><strong>1.00%</strong></div></div> : <p className="sol-buy-note">Get a live Jupiter quote before swapping. Your wallet will show the transaction details and ask for approval. Quote requests never spend funds.</p>}
-    <button type="button" className="sol-buy-cta" onClick={quote ? buy : getQuote} disabled={busy}>{busy ? "Preparing swap…" : quote ? "Confirm buy in Phantom" : "Get Jupiter quote"} <span>→</span></button>
+    <button type="button" className="sol-buy-cta" onClick={quote ? buy : getQuote} disabled={busy}>{busy ? "Preparing swap…" : quote ? `Confirm ${side} in Phantom` : `Get ${side} quote`} <span>→</span></button>
     {message ? <p className="sol-buy-feedback" role="status">{message}</p> : null}
     {error ? <p className="sol-buy-feedback is-error" role="alert">{error}</p> : null}
     <div className="sol-buy-footer"><span className="sol-buy-wallet-dot" /><span>{walletAddress ? `${walletAddress.slice(0, 6)}…${walletAddress.slice(-5)}` : "Wallet connects when you request a quote"}</span><span className="sol-buy-secure">WALLET-APPROVED</span></div>

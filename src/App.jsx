@@ -813,15 +813,16 @@ function HolderRewardsPage() {
 }
 
 function LaunchPage({ tokens = [] }) {
+  const [network, setNetwork] = useState("sol");
   const [tab, setTab] = useState("all");
   const [wallet, setWallet] = useState("");
   const [walletBusy, setWalletBusy] = useState(false);
   const [walletMessage, setWalletMessage] = useState("");
   const [form, setForm] = useState({ name: "", symbol: "", description: "", image: "", website: "", twitter: "", telegram: "", supply: "1000000000" });
   const [showCreate, setShowCreate] = useState(false);
-
-  const robinhoodTokens = tokens.filter((token) => token.chain === "robinhood");
-  const visibleTokens = robinhoodTokens.filter((token) => {
+  const isSolana = network === "sol";
+  const networkTokens = tokens.filter((token) => isSolana ? ["sol", "solana"].includes(String(token.chain || "").toLowerCase()) : String(token.chain || "").toLowerCase() === "robinhood");
+  const visibleTokens = networkTokens.filter((token) => {
     if (tab === "new") return Date.now() - Number(token.createdAt || token.timestamp || 0) < 86400000;
     if (tab === "active") return Number(token.volume24h || token.volume1h || 0) > 0;
     if (tab === "graduated") return Boolean(token.graduated || token.isGraduated);
@@ -829,16 +830,27 @@ function LaunchPage({ tokens = [] }) {
   }).sort((a, b) => Number(b.marketCap || 0) - Number(a.marketCap || 0));
 
   async function connectWallet() {
-    const ethereum = window.ethereum;
-    if (!ethereum) { setWalletMessage("Install Robinhood Wallet or MetaMask to connect."); return; }
     setWalletBusy(true); setWalletMessage("");
     try {
-      await ethereum.request({ method: "wallet_addEthereumChain", params: [{ chainId: "0x1237", chainName: "Robinhood Chain", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: ["https://rpc.mainnet.chain.robinhood.com"], blockExplorerUrls: ["https://robinhoodchain.blockscout.com"] }] });
-      await ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x1237" }] });
-      const accounts = await ethereum.request({ method: "eth_requestAccounts" });
-      const account = accounts?.[0] || "";
-      setWallet(account);
-      setWalletMessage(account ? "Wallet connected on Robinhood Chain." : "No wallet account returned.");
+      if (isSolana) {
+        const provider = window.phantom?.solana || window.solflare || window.solana;
+        if (!provider?.connect) throw new Error("Install Phantom or Solflare to connect a Solana wallet.");
+        const response = await provider.connect();
+        const address = response?.publicKey?.toString?.() || provider.publicKey?.toString?.() || "";
+        if (!address) throw new Error("No Solana wallet address was returned.");
+        setWallet(address);
+        setWalletMessage("Solana wallet connected. Token deployment is not enabled yet.");
+      } else {
+        const ethereum = window.ethereum;
+        if (!ethereum) throw new Error("Install Robinhood Wallet or MetaMask to connect.");
+        await ethereum.request({ method: "wallet_addEthereumChain", params: [{ chainId: "0x1237", chainName: "Robinhood Chain", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: ["https://rpc.mainnet.chain.robinhood.com"], blockExplorerUrls: ["https://robinhoodchain.blockscout.com"] }] });
+        await ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x1237" }] });
+        const accounts = await ethereum.request({ method: "eth_requestAccounts" });
+        const address = accounts?.[0] || "";
+        if (!address) throw new Error("No EVM wallet account was returned.");
+        setWallet(address);
+        setWalletMessage("Wallet connected on Robinhood Chain. Token deployment is not enabled yet.");
+      }
     } catch (error) { setWalletMessage(error?.message || "Wallet connection failed."); }
     finally { setWalletBusy(false); }
   }
@@ -855,16 +867,19 @@ function LaunchPage({ tokens = [] }) {
   return (
     <div className="fb-launchpad">
       <div className="fb-launchpad-hero">
-        <div className="fb-launchpad-kicker"><span className="fb-live-pulse" /> ROBINHOOD CHAIN · COMMUNITY LAUNCHES</div>
+        <div className="fb-launchpad-kicker"><span className="fb-live-pulse" /> MULTI-CHAIN · COMMUNITY LAUNCHES</div>
         <div className="fb-launchpad-hero-row">
-          <div><h1>Launch the <span>next movement.</span></h1><p>Create, discover and trade community tokens on Robinhood Chain. Built for the next generation of on-chain launches.</p></div>
+          <div><h1>Launch the <span>next movement.</span></h1><p>Create, discover and trade community tokens across Solana and Robinhood Chain—all from FLASHBOYS.</p></div>
           <button className="fb-create-launch" onClick={() => setShowCreate((v) => !v)}>{showCreate ? "Close creator" : "＋ Create a coin"}</button>
         </div>
-        <div className="fb-launchpad-stats"><div><small>NETWORK</small><strong>Robinhood Chain</strong></div><div><small>CHAIN ID</small><strong>4663</strong></div><div><small>LISTED IN FEED</small><strong>{robinhoodTokens.length}</strong></div><div><small>YOUR WALLET</small><strong>{wallet ? wallet.slice(0, 6) + "…" + wallet.slice(-4) : "Not connected"}</strong></div></div>
+        <div className="fb-launchpad-stats"><div><small>NETWORK</small><strong>{isSolana ? "Solana" : "Robinhood Chain"}</strong></div><div><small>{isSolana ? "NETWORK" : "CHAIN ID"}</small><strong>{isSolana ? "Mainnet" : "4663"}</strong></div><div><small>LISTED IN FEED</small><strong>{networkTokens.length}</strong></div><div><small>YOUR WALLET</small><strong>{wallet ? wallet.slice(0, 6) + "…" + wallet.slice(-4) : "Not connected"}</strong></div></div>
       </div>
-
+      <div className="fb-launch-toolbar">
+        <div><span className="fb-section-eyebrow">CHOOSE YOUR NETWORK</span><h2>Launchpad networks</h2></div>
+        <div className="fb-launch-filters"><button className={isSolana ? "active" : ""} onClick={() => { setNetwork("sol"); setWallet(""); setWalletMessage(""); setTab("all"); }}>Solana</button><button className={!isSolana ? "active" : ""} onClick={() => { setNetwork("robinhood"); setWallet(""); setWalletMessage(""); setTab("all"); }}>Robinhood Chain</button></div>
+      </div>
       {showCreate ? <section className="fb-create-panel">
-        <div className="fb-create-heading"><div><span className="fb-section-eyebrow">TOKEN STUDIO</span><h2>Create your coin</h2><p>Prepare your token details. Launch transactions will be enabled after the bonding-curve and graduation contracts are deployed and independently reviewed.</p></div><span className="fb-protocol-status">PROTOCOL SETUP IN PROGRESS</span></div>
+        <div className="fb-create-heading"><div><span className="fb-section-eyebrow">TOKEN STUDIO · {isSolana ? "SOLANA" : "ROBINHOOD CHAIN"}</span><h2>Create your coin</h2><p>{isSolana ? "Prepare a Solana SPL token with metadata and a Pump.fun-style bonding-curve launch." : "Prepare your Robinhood Chain token for a bonding-curve launch and liquidity graduation."}</p></div><span className="fb-protocol-status">LAUNCH INTEGRATION IN PROGRESS</span></div>
         <div className="fb-create-grid">
           <label>Token name<input value={form.name} onChange={update("name")} placeholder="e.g. Flash Rocket" maxLength={32}/></label>
           <label>Ticker<input value={form.symbol} onChange={update("symbol")} placeholder="e.g. FROCKET" maxLength={10}/></label>
@@ -875,20 +890,19 @@ function LaunchPage({ tokens = [] }) {
           <label>Telegram<input value={form.telegram} onChange={update("telegram")} placeholder="https://t.me/…"/></label>
           <label>Total supply<input value={form.supply} onChange={update("supply")} inputMode="numeric" placeholder="1000000000"/></label>
         </div>
-        <div className="fb-create-actions"><button type="button" className="fb-connect-wallet" onClick={connectWallet} disabled={walletBusy}>{walletBusy ? "Connecting…" : wallet ? "Wallet connected ✓" : "Connect Robinhood Wallet"}</button><button type="button" className="fb-launch-disabled" disabled title="Available after the launch protocol is deployed and audited">Launch coin · Coming soon</button></div>
+        <div className="fb-create-actions"><button type="button" className="fb-connect-wallet" onClick={connectWallet} disabled={walletBusy}>{walletBusy ? "Connecting…" : wallet ? "Wallet connected ✓" : isSolana ? "Connect Phantom / Solflare" : "Connect Robinhood Wallet"}</button><button type="button" className="fb-launch-disabled" disabled title="Available after the launch protocol is integrated and tested">Launch coin · Coming soon</button></div>
         {walletMessage ? <p className="fb-wallet-message" role="status">{walletMessage}</p> : null}
-        <div className="fb-protocol-note"><strong>Why is launch disabled?</strong> A real bonding curve must custody/route funds, enforce its pricing formula, prevent re-entrancy and manipulation, and atomically graduate liquidity into a pool. We will not take a user's funds through an unreviewed or placeholder contract. No token has been deployed by this form.</div>
+        <div className="fb-protocol-note"><strong>Launch status:</strong> Wallet connection is available, but token deployment is not. {isSolana ? "Solana needs a verified Pump program integration, metadata upload, transaction simulation, and mainnet testing." : "Robinhood Chain needs deployed and independently reviewed bonding-curve and graduation contracts."} No token is created and no funds are collected by this form.</div>
       </section> : null}
-
-      <div className="fb-launch-toolbar"><div><span className="fb-section-eyebrow">THE LAUNCH FLOOR</span><h2>Explore launches</h2></div><div className="fb-launch-filters">{[["all","All coins"],["new","New"],["active","Active"],["graduated","Graduated"]].map(([value,label]) => <button key={value} className={tab===value?"active":""} onClick={() => setTab(value)}>{label}</button>)}</div></div>
+      <div className="fb-launch-toolbar"><div><span className="fb-section-eyebrow">THE LAUNCH FLOOR</span><h2>Explore {isSolana ? "Solana" : "Robinhood Chain"} launches</h2></div><div className="fb-launch-filters">{[["all","All coins"],["new","New"],["active","Active"],["graduated","Graduated"]].map(([value,label]) => <button key={value} className={tab===value?"active":""} onClick={() => setTab(value)}>{label}</button>)}</div></div>
       {visibleTokens.length ? <div className="fb-launch-grid">{visibleTokens.slice(0,50).map((token) => <article className="fb-launch-token" key={token.address || token.mint}>
-        <div className="fb-launch-token-top"><div className="fb-launch-token-logo">{(token.symbol || token.name || "?").slice(0,1).toUpperCase()}</div><span className={token.graduated || token.isGraduated ? "fb-token-stage graduated" : "fb-token-stage"}>{token.graduated || token.isGraduated ? "GRADUATED" : "BONDING"}</span></div>
+        <div className="fb-launch-token-top"><div className="fb-launch-token-logo">{(token.symbol || token.name || "?").slice(0,1).toUpperCase()}</div><span className={token.graduated || token.isGraduated ? "fb-token-stage graduated" : "fb-token-stage"}>{token.graduated || token.isGraduated ? "GRADUATED" : "ACTIVE"}</span></div>
         <h3>{token.name || "Unknown token"}</h3><p className="fb-token-ticker">${token.symbol || "TOKEN"}</p>
         <div className="fb-token-metrics"><div><small>MARKET CAP</small><strong>{formatMcap(token.marketCap)}</strong></div><div><small>24H VOLUME</small><strong>{formatMcap(token.volume24h || token.volume1h)}</strong></div></div>
         <div className="fb-token-address">{String(token.address || token.mint || "").slice(0,8)}…{String(token.address || token.mint || "").slice(-6)}</div>
-        <a href={token.pairUrl || "https://robinhoodchain.blockscout.com/"} target="_blank" rel="noreferrer">View token ↗</a>
-      </article>)}</div> : <div className="fb-launch-empty"><div>✦</div><h3>No launches in this filter yet</h3><p>Robinhood Chain tokens discovered by FLASHGUYS will appear here as the market feed indexes them.</p><button onClick={() => setTab("all")}>View all indexed coins</button></div>}
-      <div className="fb-launchpad-footer"><span>FLASHBOYS LAUNCHPAD</span><span>Robinhood Chain · Chain ID 4663</span><a href="https://robinhoodchain.blockscout.com/" target="_blank" rel="noreferrer">Blockscout explorer ↗</a></div>
+        <a href={token.pairUrl || (isSolana ? "https://solscan.io/" : "https://robinhoodchain.blockscout.com/")} target="_blank" rel="noreferrer">View token ↗</a>
+      </article>)}</div> : <div className="fb-launch-empty"><div>✦</div><h3>No launches in this filter yet</h3><p>{isSolana ? "Solana tokens discovered by FLASHGUYS will appear here as the live feed indexes them." : "Robinhood Chain tokens discovered by FLASHGUYS will appear here as the market feed indexes them."}</p><button onClick={() => setTab("all")}>View all indexed coins</button></div>}
+      <div className="fb-launchpad-footer"><span>FLASHBOYS LAUNCHPAD</span><span>{isSolana ? "Solana Mainnet" : "Robinhood Chain · Chain ID 4663"}</span><a href={isSolana ? "https://solscan.io/" : "https://robinhoodchain.blockscout.com/"} target="_blank" rel="noreferrer">Explorer ↗</a></div>
     </div>
   );
 }

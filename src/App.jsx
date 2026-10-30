@@ -553,21 +553,17 @@ function RobinhoodBuyPanel({ token }) {
     finally { setBusy(false); }
   }
   const output = quote?.quote?.output?.amount || quote?.quote?.output?.amountOut || "";
-  return <section className="token-activity-subpanel solana-buy-panel">
-    <div className="token-activity-subheading"><strong>Buy {token.symbol || "token"} with ETH</strong><span>Robinhood Chain · Uniswap</span></div>
-    <p className="activity-unavailable">Live Uniswap route quote. Purchases use real ETH on Robinhood Chain and require wallet approval. ETH gas fees apply.</p>
-    <label htmlFor="fg-rh-buy-eth">Amount (ETH)</label>
-    <input id="fg-rh-buy-eth" type="number" min="0.000001" max="100" step="0.001" value={amount} onChange={e => { setAmount(e.target.value); setQuote(null); }} />
-    <button type="button" className="account-primary" onClick={getQuote} disabled={busy}>{busy ? "Please wait…" : "Get Uniswap quote"}</button>
-    {quote ? <div className="solana-buy-quote">
-      <div><span>Estimated output (base units)</span><strong>{output ? Number(output).toLocaleString("en-US") : "See quote details"}</strong></div>
-      <div><span>Routing</span><strong>{quote.routing || "Uniswap"}</strong></div>
-      <div><span>Estimated gas (USD)</span><strong>{quote.quote?.classicGasUseEstimateUSD || "Not supplied"}</strong></div>
-      <button type="button" className="account-primary" onClick={buy} disabled={busy}>{busy ? "Waiting for wallet…" : "Confirm buy in wallet"}</button>
-    </div> : null}
-    {message ? <p className="account-message" role="status">{message}</p> : null}
-    {error ? <p className="account-message" role="alert">{error}</p> : null}
-    <small>Wallet: {wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-5)}` : "Not connected"}</small>
+  return <section className="rh-buy-card">
+    <div className="rh-buy-topline"><span className="rh-buy-live"><i /> IN-APP SWAP</span><span className="rh-buy-network">ROBINHOOD CHAIN</span></div>
+    <div className="rh-buy-heading"><div className="rh-buy-coin-icon">↗</div><div><h3>Buy {token.symbol || "token"}</h3><p>Swap ETH for {token.symbol || "this token"}</p></div><span className="rh-buy-provider">UNI<span>SWAP</span></span></div>
+    <div className="rh-buy-input-label"><label htmlFor="fg-rh-buy-eth">YOU PAY</label><span>Native asset · ETH</span></div>
+    <div className="rh-buy-amount-box"><input id="fg-rh-buy-eth" type="number" min="0.000001" max="100" step="0.001" value={amount} onChange={e => { setAmount(e.target.value); setQuote(null); }} /><strong>ETH</strong></div>
+    <div className="rh-buy-receive"><span>YOU RECEIVE</span><strong>{quote ? (output ? Number(output).toLocaleString("en-US") : "See quote details") : "—"} <small>{token.symbol || "TOKEN"}</small></strong></div>
+    {quote ? <div className="rh-buy-details"><div><span>Route</span><strong>{quote.routing || "Uniswap"}</strong></div><div><span>Estimated gas (USD)</span><strong>{quote.quote?.classicGasUseEstimateUSD || "Not supplied"}</strong></div><div><span>Slippage</span><strong>0.5%</strong></div></div> : <p className="rh-buy-note">Get a live quote before swapping. Network fees apply and your wallet will ask you to approve the transaction.</p>}
+    <button type="button" className="rh-buy-cta" onClick={quote ? buy : getQuote} disabled={busy}>{busy ? "Preparing swap…" : quote ? "Confirm swap in wallet" : "Get swap quote"} <span>→</span></button>
+    {message ? <p className="rh-buy-feedback" role="status">{message}</p> : null}
+    {error ? <p className="rh-buy-feedback is-error" role="alert">{error}</p> : null}
+    <div className="rh-buy-footer"><span className="rh-buy-wallet-dot" /><span>{wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-5)}` : "Wallet connects when you request a quote"}</span><span className="rh-buy-secure">WALLET-APPROVED</span></div>
   </section>;
 }
 

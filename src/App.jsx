@@ -521,7 +521,9 @@ function RobinhoodBuyPanel({ token }) {
       const address = accounts[0]; setWallet(address);
       const w = { chain: "evm", walletName: "EVM wallet", address, chainId: CHAIN, connectedAt: new Date().toISOString() };
       localStorage.setItem("flashguys.connected.wallet", JSON.stringify(w)); window.dispatchEvent(new Event("flashguys:wallet"));
-      const data = await request("quote", { tokenIn: ETH, tokenOut: token.address, amount: BigInt(Math.floor(n * 1e6)) * 1000000000000n + BigInt(Math.round((n * 1e18) % 1e12)), swapper: address });
+      const [whole, fraction = ""] = amount.trim().split(".");
+      const weiAmount = (BigInt(whole || "0") * 10n ** 18n + BigInt((fraction + "0".repeat(18)).slice(0, 18))).toString();
+      const data = await request("quote", { tokenIn: ETH, tokenOut: token.address, amount: weiAmount, swapper: address });
       if (!data.quote) throw new Error(data.error || "No Uniswap route returned for this token.");
       if (["DUTCH_V2", "DUTCH_V3", "PRIORITY"].includes(data.routing)) throw new Error("This quote requires UniswapX order signing, which is not enabled in this version. Try another route or token.");
       setQuote(data); setMessage("Quote simulated by Uniswap. No transaction has been sent.");

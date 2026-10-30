@@ -665,7 +665,7 @@ function TokenModal({ token, onClose, watched, onToggleWatch }) {
             </div>
           </div>
 
-          {token.chain === "robinhood" ? null : <SolanaBuyPanel token={token} />}\n\n          {token.chain === "robinhood" ? <RobinhoodBuyPanel token={token} /> : <SolanaBuyPanel token={token} />}\n\n          <div className="chart-container">
+          {token.chain === "robinhood" ? <RobinhoodBuyPanel token={token} /> : <SolanaBuyPanel token={token} />}\n\n          <div className="chart-container">
             <div className="chart-title">Price Chart</div>
             <PriceChart token={token} />
           </div>

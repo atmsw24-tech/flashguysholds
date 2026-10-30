@@ -821,9 +821,25 @@ function LaunchPage({ tokens = [] }) {
   const [form, setForm] = useState({ name: "", symbol: "", description: "", image: "", website: "", twitter: "", telegram: "", supply: "1000000000" });
   const [showCreate, setShowCreate] = useState(false);
   const isSolana = network === "sol";
-  const networkTokens = tokens.filter((token) => isSolana ? ["sol", "solana"].includes(String(token.chain || "").toLowerCase()) : String(token.chain || "").toLowerCase() === "robinhood");
+  // Only render records with an on-chain contract/mint and real token metadata.
+  // Missing market metrics stay explicitly unavailable; they are never replaced with estimates.
+  const networkTokens = tokens.filter((token) => {
+    const chainMatches = isSolana
+      ? ["sol", "solana"].includes(String(token.chain || "").toLowerCase())
+      : String(token.chain || "").toLowerCase() === "robinhood";
+    const address = String(token.address || token.mint || "");
+    const validAddress = isSolana
+      ? /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)
+      : /^0x[a-fA-F0-9]{40}$/.test(address);
+    const validName = token.name && !["unknown", "???", "token"].includes(String(token.name).toLowerCase());
+    const validSymbol = token.symbol && !["???", "token"].includes(String(token.symbol).toLowerCase());
+    return chainMatches && validAddress && validName && validSymbol;
+  });
   const visibleTokens = networkTokens.filter((token) => {
-    if (tab === "new") return Date.now() - Number(token.createdAt || token.timestamp || 0) < 86400000;
+    if (tab === "new") {
+      const created = new Date(token.createdAt || token.pairCreatedAt || token.timestamp || "").getTime();
+      return Number.isFinite(created) && created > 0 && Date.now() - created < 86400000;
+    }
     if (tab === "active") return Number(token.volume24h || token.volume1h || 0) > 0;
     if (tab === "graduated") return Boolean(token.graduated || token.isGraduated);
     return true;
@@ -857,7 +873,8 @@ function LaunchPage({ tokens = [] }) {
 
   const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
   const formatMcap = (value) => {
-    const n = Number(value || 0);
+    if (value === null || value === undefined || value === "" || !Number.isFinite(Number(value)) || Number(value) <= 0) return "Not reported";
+    const n = Number(value);
     if (n >= 1e9) return "$" + (n / 1e9).toFixed(2) + "B";
     if (n >= 1e6) return "$" + (n / 1e6).toFixed(2) + "M";
     if (n >= 1e3) return "$" + (n / 1e3).toFixed(1) + "K";
@@ -896,11 +913,11 @@ function LaunchPage({ tokens = [] }) {
       </section> : null}
       <div className="fb-launch-toolbar"><div><span className="fb-section-eyebrow">THE LAUNCH FLOOR</span><h2>Explore {isSolana ? "Solana" : "Robinhood Chain"} launches</h2></div><div className="fb-launch-filters">{[["all","All coins"],["new","New"],["active","Active"],["graduated","Graduated"]].map(([value,label]) => <button key={value} className={tab===value?"active":""} onClick={() => setTab(value)}>{label}</button>)}</div></div>
       {visibleTokens.length ? <div className="fb-launch-grid">{visibleTokens.slice(0,50).map((token) => <article className="fb-launch-token" key={token.address || token.mint}>
-        <div className="fb-launch-token-top"><div className="fb-launch-token-logo">{(token.symbol || token.name || "?").slice(0,1).toUpperCase()}</div><span className={token.graduated || token.isGraduated ? "fb-token-stage graduated" : "fb-token-stage"}>{token.graduated || token.isGraduated ? "GRADUATED" : "ACTIVE"}</span></div>
+        <div className="fb-launch-token-top">{token.image || token.logo ? <img className="fb-launch-token-logo" src={token.image || token.logo} alt="" loading="lazy" /> : <div className="fb-launch-token-logo">◈</div>}<span className={token.graduated || token.isGraduated ? "fb-token-stage graduated" : "fb-token-stage"}>{token.graduated || token.isGraduated ? "GRADUATED" : Number(token.volume24h || token.volume1h || 0) > 0 ? "ACTIVE" : "INDEXED"}</span></div>
         <h3>{token.name || "Unknown token"}</h3><p className="fb-token-ticker">${token.symbol || "TOKEN"}</p>
         <div className="fb-token-metrics"><div><small>MARKET CAP</small><strong>{formatMcap(token.marketCap)}</strong></div><div><small>24H VOLUME</small><strong>{formatMcap(token.volume24h || token.volume1h)}</strong></div></div>
         <div className="fb-token-address">{String(token.address || token.mint || "").slice(0,8)}…{String(token.address || token.mint || "").slice(-6)}</div>
-        <a href={token.pairUrl || (isSolana ? "https://solscan.io/" : "https://robinhoodchain.blockscout.com/")} target="_blank" rel="noreferrer">View token ↗</a>
+        <a href={token.pairUrl || (isSolana ? "https://solscan.io/token/" + encodeURIComponent(token.address || token.mint) : "https://robinhoodchain.blockscout.com/token/" + encodeURIComponent(token.address))} target="_blank" rel="noreferrer">View verified token ↗</a>
       </article>)}</div> : <div className="fb-launch-empty"><div>✦</div><h3>No launches in this filter yet</h3><p>{isSolana ? "Solana tokens discovered by FLASHGUYS will appear here as the live feed indexes them." : "Robinhood Chain tokens discovered by FLASHGUYS will appear here as the market feed indexes them."}</p><button onClick={() => setTab("all")}>View all indexed coins</button></div>}
       <div className="fb-launchpad-footer"><span>FLASHBOYS LAUNCHPAD</span><span>{isSolana ? "Solana Mainnet" : "Robinhood Chain · Chain ID 4663"}</span><a href={isSolana ? "https://solscan.io/" : "https://robinhoodchain.blockscout.com/"} target="_blank" rel="noreferrer">Explorer ↗</a></div>
     </div>

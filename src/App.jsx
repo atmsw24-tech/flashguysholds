@@ -487,6 +487,7 @@ function SolanaBuyPanel({ token }) {
 
 function RobinhoodBuyPanel({ token }) {
   const [amount, setAmount] = useState("0.01");
+  const [side, setSide] = useState("buy");
   const [quote, setQuote] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -528,9 +529,11 @@ function RobinhoodBuyPanel({ token }) {
       const address = accounts[0]; setWallet(address);
       const w = { chain: "evm", walletName: "EVM wallet", address, chainId: CHAIN, connectedAt: new Date().toISOString() };
       localStorage.setItem("flashguys.connected.wallet", JSON.stringify(w)); window.dispatchEvent(new Event("flashguys:wallet"));
+      const decimals = side === "buy" ? 18 : Number(token.decimals);
+      if (!Number.isInteger(decimals) || decimals < 0 || decimals > 18) throw new Error("Token decimals are unavailable; cannot safely prepare a sell quote.");
       const [whole, fraction = ""] = amount.trim().split(".");
-      const weiAmount = (BigInt(whole || "0") * 10n ** 18n + BigInt((fraction + "0".repeat(18)).slice(0, 18))).toString();
-      const data = await request("quote", { tokenIn: ETH, tokenOut: token.address, amount: weiAmount, swapper: address });
+      const baseAmount = (BigInt(whole || "0") * 10n ** BigInt(decimals) + BigInt((fraction + "0".repeat(decimals)).slice(0, decimals) || "0")).toString();
+      const data = await request("quote", { tokenIn: side === "buy" ? ETH : token.address, tokenOut: side === "buy" ? token.address : ETH, amount: baseAmount, swapper: address });
       if (!data.quote) throw new Error(data.error || "No Uniswap route returned for this token.");
       if (["DUTCH_V2", "DUTCH_V3", "PRIORITY"].includes(data.routing)) throw new Error("This quote requires UniswapX order signing, which is not enabled in this version. Try another route or token.");
       setQuote(data); setMessage("Quote simulated by Uniswap. No transaction has been sent.");
@@ -557,12 +560,12 @@ function RobinhoodBuyPanel({ token }) {
   const output = quote?.quote?.output?.amount || quote?.quote?.output?.amountOut || "";
   return <section className="rh-buy-card">
     <div className="rh-buy-topline"><span className="rh-buy-live"><i /> IN-APP SWAP</span><span className="rh-buy-network">ROBINHOOD CHAIN</span></div>
-    <div className="rh-buy-heading"><div className="rh-buy-coin-icon">↗</div><div><h3>Buy {token.symbol || "token"}</h3><p>Swap ETH for {token.symbol || "this token"}</p></div><span className="rh-buy-provider">UNI<span>SWAP</span></span></div>
-    <div className="rh-buy-input-label"><label htmlFor="fg-rh-buy-eth">YOU PAY</label><span>Native asset · ETH</span></div>
-    <div className="rh-buy-amount-box"><input id="fg-rh-buy-eth" type="number" min="0.000001" max="100" step="0.001" value={amount} onChange={e => { setAmount(e.target.value); setQuote(null); }} /><strong>ETH</strong></div>
-    <div className="rh-buy-receive"><span>YOU RECEIVE</span><strong>{quote ? (output ? Number(output).toLocaleString("en-US") : "See quote details") : "—"} <small>{token.symbol || "TOKEN"}</small></strong></div>
+    <div style={{display:"flex",gap:8,marginBottom:12}}><button type="button" className={side==="buy"?"rh-buy-cta":"refined-volume-toggle"} onClick={()=>{setSide("buy");setQuote(null);}}>Buy</button><button type="button" className={side==="sell"?"rh-buy-cta":"refined-volume-toggle"} onClick={()=>{setSide("sell");setQuote(null);}}>Sell</button></div><div className="rh-buy-heading"><div className="rh-buy-coin-icon">↗</div><div><h3>Buy {token.symbol || "token"}</h3><p>Swap ETH for {token.symbol || "this token"}</p></div><span className="rh-buy-provider">UNI<span>SWAP</span></span></div>
+    <div className="rh-buy-input-label"><label htmlFor="fg-rh-buy-eth">YOU PAY</label><span>{side === "buy" ? "Native asset · ETH" : "Token · " + (token.symbol || "TOKEN")}</span></div>
+    <div className="rh-buy-amount-box"><input id="fg-rh-buy-eth" type="number" min="0.000001" max="100" step="0.001" value={amount} onChange={e => { setAmount(e.target.value); setQuote(null); }} /><strong>{side === "buy" ? "ETH" : (token.symbol || "TOKEN")}</strong></div>
+    <div className="rh-buy-receive"><span>YOU RECEIVE</span><strong>{quote ? (output ? Number(output).toLocaleString("en-US") : "See quote details") : "—"} <small>{side === "buy" ? (token.symbol || "TOKEN") : "ETH"}</small></strong></div>
     {quote ? <div className="rh-buy-details"><div><span>Route</span><strong>{quote.routing || "Uniswap"}</strong></div><div><span>Estimated gas (USD)</span><strong>{quote.quote?.classicGasUseEstimateUSD || "Not supplied"}</strong></div><div><span>Slippage</span><strong>0.5%</strong></div></div> : <p className="rh-buy-note">Get a live quote before swapping. Network fees apply and your wallet will ask you to approve the transaction.</p>}
-    <button type="button" className="rh-buy-cta" onClick={quote ? buy : getQuote} disabled={busy}>{busy ? "Preparing swap…" : quote ? "Confirm swap in wallet" : "Get swap quote"} <span>→</span></button>
+    <button type="button" className="rh-buy-cta" onClick={quote ? buy : getQuote} disabled={busy}>{busy ? "Preparing swap…" : quote ? `Confirm ${side} in wallet` : `Get ${side} quote`} <span>→</span></button>
     {message ? <p className="rh-buy-feedback" role="status">{message}</p> : null}
     {error ? <p className="rh-buy-feedback is-error" role="alert">{error}</p> : null}
     <div className="rh-buy-footer"><span className="rh-buy-wallet-dot" /><span>{wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-5)}` : "Wallet connects when you request a quote"}</span><span className="rh-buy-secure">WALLET-APPROVED</span></div>

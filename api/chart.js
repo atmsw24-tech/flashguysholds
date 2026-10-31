@@ -108,15 +108,34 @@ export default async function handler(req, res) {
     // pool's BASE asset before requesting candles; using an unrelated first pool
     // can draw the wrong asset's price history.
     try {
-      const poolPayload = await fetchJson(
-        `${GECKO}/networks/${network}/tokens/${encodeURIComponent(address)}/pools`,
-        HEADERS
-      );
-      const pools = Array.isArray(poolPayload?.data) ? poolPayload.data : [];
-      const matchingPools = pools.filter((pool) =>
-        tokenAddressFromPool(pool, "base").toLowerCase() === address.toLowerCase()
-      ).sort((a, b) => poolLiquidity(b) - poolLiquidity(a));
-      const pool = matchingPools[0] || null;
+      // Prefer the exact pair/pool selected by the token feed. This keeps the
+      // chart tied to the same market the user opened instead of silently
+      // switching to a different pool for the same mint.
+      const requestedPool = String(req.query?.pairAddress || "").trim();
+      let pool = null;
+      if (requestedPool) {
+        const directPayload = await fetchJson(
+          `${GECKO}/networks/${network}/pools/${encodeURIComponent(requestedPool)}`,
+          HEADERS
+        );
+        const candidate = directPayload?.data;
+        const baseMint = tokenAddressFromPool(candidate, "base");
+        if (candidate && baseMint.toLowerCase() === address.toLowerCase()) {
+          pool = candidate;
+        }
+      }
+
+      if (!pool) {
+        const poolPayload = await fetchJson(
+          `${GECKO}/networks/${network}/tokens/${encodeURIComponent(address)}/pools`,
+          HEADERS
+        );
+        const pools = Array.isArray(poolPayload?.data) ? poolPayload.data : [];
+        const matchingPools = pools.filter((item) =>
+          tokenAddressFromPool(item, "base").toLowerCase() === address.toLowerCase()
+        ).sort((a, b) => poolLiquidity(b) - poolLiquidity(a));
+        pool = matchingPools[0] || null;
+      }
       poolAddress = String(pool?.attributes?.address || "");
 
       if (pool && !price) {

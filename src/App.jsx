@@ -860,6 +860,10 @@ function LaunchPage({ tokens = [] }) {
   const [walletMessage, setWalletMessage] = useState("");
   const [form, setForm] = useState({ name: "", symbol: "", description: "", image: "", website: "", twitter: "", telegram: "", supply: "1000000000" });
   const [showCreate, setShowCreate] = useState(false);
+  const [logoFile, setLogoFile] = useState(null);
+  const [pinataBusy, setPinataBusy] = useState(false);
+  const [pinataMessage, setPinataMessage] = useState("");
+  const [pinataResult, setPinataResult] = useState(null);
   const isSolana = network === "sol";
   // Only render records with an on-chain contract/mint and real token metadata.
   // Missing market metrics stay explicitly unavailable; they are never replaced with estimates.
@@ -912,6 +916,37 @@ function LaunchPage({ tokens = [] }) {
   }
 
   const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
+
+  async function uploadTokenMetadata() {
+    if (!logoFile) { setPinataMessage("Choose a logo image first."); return; }
+    if (!form.name.trim() || !form.symbol.trim()) { setPinataMessage("Enter the token name and ticker first."); return; }
+    if (logoFile.size > 4 * 1024 * 1024) { setPinataMessage("Logo must be smaller than 4 MB."); return; }
+    setPinataBusy(true); setPinataMessage(""); setPinataResult(null);
+    try {
+      const imageBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("Could not read the selected image."));
+        reader.readAsDataURL(logoFile);
+      });
+      const response = await fetch("/api/pinata-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          imageBase64, fileName: logoFile.name, contentType: logoFile.type,
+          name: form.name, symbol: form.symbol, description: form.description,
+          website: form.website, twitter: form.twitter, telegram: form.telegram
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Pinata upload failed.");
+      setPinataResult(data);
+      setForm((current) => ({ ...current, image: data.image }));
+      setPinataMessage("Logo and token metadata uploaded to IPFS successfully.");
+    } catch (error) {
+      setPinataMessage(error?.message || "Pinata upload failed.");
+    } finally { setPinataBusy(false); }
+  }
   const formatMcap = (value) => {
     if (value === null || value === undefined || value === "" || !Number.isFinite(Number(value)) || Number(value) <= 0) return "Not reported";
     const n = Number(value);
@@ -941,13 +976,15 @@ function LaunchPage({ tokens = [] }) {
           <label>Token name<input value={form.name} onChange={update("name")} placeholder="e.g. Flash Rocket" maxLength={32}/></label>
           <label>Ticker<input value={form.symbol} onChange={update("symbol")} placeholder="e.g. FROCKET" maxLength={10}/></label>
           <label className="fb-wide">Description<textarea value={form.description} onChange={update("description")} placeholder="What is your coin about?" maxLength={500}/></label>
-          <label className="fb-wide">Logo image URL<input value={form.image} onChange={update("image")} placeholder="https://…"/></label>
+          <label className="fb-wide">Token logo image<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => { setLogoFile(event.target.files?.[0] || null); setPinataResult(null); setPinataMessage(""); }} /><small>Upload a PNG, JPG, WEBP, or GIF (max 4 MB) to Pinata IPFS.</small></label>
           <label>Website<input value={form.website} onChange={update("website")} placeholder="https://…"/></label>
           <label>X profile<input value={form.twitter} onChange={update("twitter")} placeholder="https://x.com/…"/></label>
           <label>Telegram<input value={form.telegram} onChange={update("telegram")} placeholder="https://t.me/…"/></label>
           <label>Total supply<input value={form.supply} onChange={update("supply")} inputMode="numeric" placeholder="1000000000"/></label>
         </div>
-        <div className="fb-create-actions"><button type="button" className="fb-connect-wallet" onClick={connectWallet} disabled={walletBusy}>{walletBusy ? "Connecting…" : wallet ? "Wallet connected ✓" : isSolana ? "Connect Phantom / Solflare" : "Connect Robinhood Wallet"}</button><button type="button" className="fb-launch-disabled" disabled title="Available after the launch protocol is integrated and tested">Launch coin · Coming soon</button></div>
+        <div className="fb-create-actions"><button type="button" className="fb-connect-wallet" onClick={uploadTokenMetadata} disabled={pinataBusy || !logoFile}>{pinataBusy ? "Uploading to Pinata…" : pinataResult ? "IPFS metadata uploaded ✓" : "Upload logo + metadata to IPFS"}</button><button type="button" className="fb-connect-wallet" onClick={connectWallet} disabled={walletBusy}>{walletBusy ? "Connecting…" : wallet ? "Wallet connected ✓" : isSolana ? "Connect Phantom / Solflare" : "Connect Robinhood Wallet"}</button><button type="button" className="fb-launch-disabled" disabled title="Available after the launch protocol is integrated and tested">Launch coin · Coming soon</button></div>
+        {pinataMessage ? <p className="fb-wallet-message" role="status">{pinataMessage}</p> : null}
+        {pinataResult ? <div className="fb-protocol-note"><strong>IPFS metadata ready:</strong> <code>{pinataResult.metadataUri}</code><br/><a href={pinataResult.metadataUrl} target="_blank" rel="noreferrer">View metadata ↗</a> · <a href={pinataResult.image} target="_blank" rel="noreferrer">View logo ↗</a><br/>Keep this metadata URI for the verified Solana launch transaction.</div> : null}
         {walletMessage ? <p className="fb-wallet-message" role="status">{walletMessage}</p> : null}
         <div className="fb-protocol-note"><strong>Launch status:</strong> Wallet connection is available, but token deployment is not. {isSolana ? "Solana needs a verified Pump program integration, metadata upload, transaction simulation, and mainnet testing." : "Robinhood Chain needs deployed and independently reviewed bonding-curve and graduation contracts."} No token is created and no funds are collected by this form.</div>
       </section> : null}

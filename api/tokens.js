@@ -1,6 +1,18 @@
 const DEX = "https://api.dexscreener.com";
 
 const ROBINHOOD_EXPLORER = "https://api.blockscout.com/4663/api/v2";
+ 
+// Validate that discovered contracts have the expected address shape for their
+// chain. This is not a security audit and does not certify a token as safe.
+function isValidContractAddress(chain, address) {
+  const value = String(address || "").trim();
+  if (chain === "robinhood") return /^0x[a-fA-F0-9]{40}$/.test(value);
+  if (chain === "sol" || chain === "solana") {
+    return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value);
+  }
+  return false;
+}
+
 
 // Optional persistent token cache. Vercel functions are ephemeral, so PostgreSQL
 // is the durable layer; API responses still work when DATABASE_URL is not set.
@@ -34,7 +46,7 @@ async function persistTokens(tokens) {
       )
     `);
     for (const token of tokens) {
-      if (!token?.address || !["sol", "solana", "robinhood"].includes(token.chain)) continue;
+      if (!token?.address || !["sol", "solana", "robinhood"].includes(token.chain) || !isValidContractAddress(token.chain, token.address)) continue;
       await pool.query(
         `INSERT INTO flashguys_token_cache (chain, address, payload, first_seen_at, last_seen_at)
          VALUES ($1, $2, $3::jsonb, COALESCE(NULLIF($4, '')::timestamptz, now()), now())

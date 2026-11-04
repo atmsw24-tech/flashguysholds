@@ -267,6 +267,102 @@ function mergeTokenLists(...lists) {
 }
 
 
+
+function flagIsOn(value) {
+  return value === true || value === 1 || value === "1";
+}
+
+function securityRecordFor(chain, raw) {
+  if (!raw || typeof raw !== "object") {
+    return { securityStatus: "unverified", securityProvider: "GoPlus", securityFlags: ["No security report available"] };
+  }
+  const flags = [];
+  let sufficientlyChecked = false;
+
+  if (chain === "sol") {
+    const status = (field) => field && typeof field === "object" ? field.status : undefined;
+    if (flagIsOn(raw.creator?.malicious_address)) flags.push("Malicious creator");
+    if (flagIsOn(raw.transfer_hook?.malicious_address)) flags.push("Malicious transfer hook");
+    if (flagIsOn(status(raw.mintable))) flags.push("Mint authority remains active");
+    if (flagIsOn(status(raw.freezable))) flags.push("Freeze authority remains active");
+    if (flagIsOn(status(raw.closable))) flags.push("Token can be closed by an authority");
+    if (flagIsOn(status(raw.balance_mutable_authority))) flags.push("Authority can modify holder balances");
+    if (flagIsOn(raw.non_transferable)) flags.push("Token is non-transferable");
+    if (String(raw.default_account_state) === "2") flags.push("New token accounts are frozen");
+    const checkedMint = status(raw.mintable) !== undefined;
+    const checkedFreeze = status(raw.freezable) !== undefined;
+    const checkedClose = status(raw.closable) !== undefined;
+    sufficientlyChecked = checkedMint && checkedFreeze && checkedClose;
+  } else {
+    if (flagIsOn(raw.is_honeypot)) flags.push("Honeypot detected");
+    if (flagIsOn(raw.is_airdrop_scam)) flags.push("Airdrop scam detected");
+    if (flagIsOn(raw.malicious_address)) flags.push("Malicious token address");
+    if (flagIsOn(raw.fake_token?.value)) flags.push("Counterfeit token identity");
+    if (flagIsOn(raw.cannot_buy)) flags.push("Buying is blocked");
+    if (flagIsOn(raw.cannot_sell_all)) flags.push("Selling is restricted");
+    if (flagIsOn(raw.owner_change_balance)) flags.push("Owner can change balances");
+    if (flagIsOn(raw.hidden_owner)) flags.push("Hidden owner detected");
+    if (flagIsOn(raw.selfdestruct)) flags.push("Self-destruct capability");
+    if (Number(raw.buy_tax) >= 0.25) flags.push("Buy tax is 25% or higher");
+    if (Number(raw.sell_tax) >= 0.25) flags.push("Sell tax is 25% or higher");
+    sufficientlyChecked =
+      String(raw.is_open_source) === "1" &&
+      String(raw.is_in_dex) === "1" &&
+      String(raw.is_honeypot) === "0";
+  }
+
+  return {
+    securityStatus: flags.length ? "risky" : sufficientlyChecked ? "clear" : "unverified",
+    securityProvider: "GoPlus",
+    securityFlags: flags.length ? flags : sufficientlyChecked ? [] : ["Security report is incomplete"],
+    securityCheckedAt: new Date().toISOString()
+  };
+}
+
+async function addSecurityMetadata(tokens) {
+  const byChain = {
+    sol: tokens.filter((token) => ["sol", "solana"].includes(String(token.chain).toLowerCase())),
+    robinhood: tokens.filter((token) => String(token.chain).toLowerCase() === "robinhood")
+  };
+  const reports = new Map();
+
+  await Promise.all(Object.entries(byChain).map(async ([chain, list]) => {
+    const addresses = [...new Set(list.map((token) => String(token.address || "").trim()).filter(Boolean))].slice(0, 30);
+    if (!addresses.length) return;
+    const endpoint = chain === "sol"
+      ? "https://api.gopluslabs.io/api/v1/solana/token_security"
+      : "https://api.gopluslabs.io/api/v1/token_security/4663";
+    try {
+      const response = await fetch(`${endpoint}?contract_addresses=${encodeURIComponent(addresses.join(","))}`, {
+        headers: { accept: "application/json" }
+      });
+      if (!response.ok) throw new Error(`GoPlus returned HTTP ${response.status}`);
+      const payload = await response.json();
+      if (String(payload?.code) !== "1" || !payload?.result || typeof payload.result !== "object") {
+        throw new Error(payload?.message || "GoPlus security response was incomplete");
+      }
+      for (const token of list) {
+        const address = String(token.address || "");
+        const raw = payload.result[address] || payload.result[address.toLowerCase()] ||
+          Object.entries(payload.result).find(([key]) => key.toLowerCase() === address.toLowerCase())?.[1];
+        reports.set(`${chain}:${chain === "sol" ? address : address.toLowerCase()}`, securityRecordFor(chain, raw));
+      }
+    } catch (error) {
+      console.warn(`GoPlus ${chain} security screening unavailable:`, error?.message || error);
+    }
+  }));
+
+  return tokens.map((token) => {
+    const chain = String(token.chain).toLowerCase() === "robinhood" ? "robinhood" : "sol";
+    const key = `${chain}:${chain === "sol" ? String(token.address) : String(token.address).toLowerCase()}`;
+    return { ...token, ...(reports.get(key) || {
+      securityStatus: "unverified",
+      securityProvider: "GoPlus",
+      securityFlags: ["Security provider did not return a report"]
+    }) };
+  });
+}
+
 function send(res, status, body) {
   return res.status(status).json(body);
 }
@@ -713,6 +809,8 @@ export default async function handler(req, res) {
       liveTokens,
       cachedTokens.filter((token) => chain === "all" || (chain === "sol" ? token.chain === "sol" || token.chain === "solana" : token.chain === "robinhood"))
     );
+    // Screen cached and live records alike; a stale cache must never bypass risk checks.
+    const screenedTokens = await addSecurityMetadata(tokens);
 
     const errors = [];
     if (solanaResult.status === "rejected") errors.push("Solana feed temporarily unavailable");

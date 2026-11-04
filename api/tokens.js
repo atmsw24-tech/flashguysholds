@@ -34,7 +34,7 @@ async function getGMGNTrendingTokens(chain, interval = "24h") {
       : Array.isArray(data?.tokens) ? data.tokens
       : Array.isArray(data?.items) ? data.items
       : Array.isArray(data?.rank_list) ? data.rank_list : [];
-    return rows.slice(0, 50).map((item, index) => {
+    const ranked = rows.slice(0, 50).map((item, index) => {
       const address = item.address || item.token_address || item.tokenAddress || item.contract_address || item.mint;
       if (!isValidContractAddress(chain, address)) return null;
       const marketCap = Number(item.usd_market_cap ?? item.market_cap ?? item.marketCap ?? item.mcap ?? item.fdv ?? 0);
@@ -61,6 +61,27 @@ async function getGMGNTrendingTokens(chain, interval = "24h") {
         marketDataAvailable: price > 0 && (liquidity > 0 || volume24h > 0)
       };
     }).filter(Boolean);
+
+    // Enrich GMGN-ranked contracts with the app's DEX pair feed so the UI can
+    // verify an actual pool and fill missing live quote fields before display.
+    const dexPairs = await getTokenPairs(chain === "sol" ? "solana" : "robinhood", ranked.map((token) => token.address));
+    return ranked.map((token) => {
+      const pair = bestPairForToken(dexPairs, token.address);
+      const market = pair ? toMarketToken({ tokenAddress: token.address }, pair, chain) : null;
+      if (!market) return token;
+      return {
+        ...market, ...token,
+        price: token.price > 0 ? token.price : market.price,
+        marketCap: token.marketCap > 0 ? token.marketCap : market.marketCap,
+        liquidity: token.liquidity > 0 ? token.liquidity : market.liquidity,
+        volume1h: token.volume1h > 0 ? token.volume1h : market.volume1h,
+        volume24h: token.volume24h > 0 ? token.volume24h : market.volume24h,
+        pairAddress: token.pairAddress || market.pairAddress,
+        pairUrl: token.pairUrl || market.pairUrl,
+        logo: token.logo || market.logo,
+        image: token.image || market.image
+      };
+    });
   } catch (error) {
     console.warn("GMGN market rank unavailable:", error?.message || error);
     return [];

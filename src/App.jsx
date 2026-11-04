@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { fetchGMGNTokens } from "./marketData";
+import { isRealTokenRecord, hasVerifiedLiveMarket } from "./tokenValidation";
 import { startLiveFeeds, subscribeLiveToken } from "./liveFeeds";
 import AccountPanel from "./AccountPanel";
 import "./styles.css";
@@ -1262,7 +1263,7 @@ export default function App() {
       const key = String(token.address || token.mint || token.id || "").toLowerCase();
       if (key) combined.set(key, { ...combined.get(key), ...token });
     });
-    let result = [...combined.values()];
+    let result = [...combined.values()].filter(isRealTokenRecord);
 
     if (watchlistOnly) { const saved = new Set(watchlist.map((item) => item.address)); result = result.filter((token) => saved.has(String(token.address || token.mint || token.id || "").toLowerCase())); }
 
@@ -1293,18 +1294,24 @@ export default function App() {
     }
 
     if (tokenView === "top") {
-      // Rank daily leaders using reported 24h volume first, then daily change
-      // and liquidity as tie-breakers. No artificial scores are displayed.
+      // GMGN-style daily leaders: require a live pair and actual 24h activity.
+      result = result.filter((token) =>
+        hasVerifiedLiveMarket(token) && Number(token.volume24h || 0) > 0
+      );
       result.sort((a, b) =>
         (Number(b.volume24h || 0) - Number(a.volume24h || 0)) ||
-        (Number(b.change24h || 0) - Number(a.change24h || 0)) ||
+        (Number(b.marketCap || 0) - Number(a.marketCap || 0)) ||
         (Number(b.liquidity || 0) - Number(a.liquidity || 0))
       );
     } else if (tokenView === "trending") {
-      // Rank trending tokens using reported short-term activity and momentum.
+      // Trending requires a live pair and measured short-term activity.
+      result = result.filter((token) =>
+        hasVerifiedLiveMarket(token) && Number(token.volume1h || 0) > 0
+      );
       result.sort((a, b) =>
         (Number(b.volume1h || 0) - Number(a.volume1h || 0)) ||
         (Number(b.change1h || 0) - Number(a.change1h || 0)) ||
+        (Number(b.marketCap || 0) - Number(a.marketCap || 0)) ||
         (Number(b.liquidity || 0) - Number(a.liquidity || 0))
       );
     } else {

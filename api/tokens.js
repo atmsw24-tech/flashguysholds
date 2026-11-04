@@ -10,7 +10,7 @@ async function getGMGNTrendingTokens(chain, interval = "24h") {
   if (!["sol", "robinhood"].includes(chain)) return [];
 
   const timestamp = Math.floor(Date.now() / 1000);
-  const clientId = crypto.randomUUID();
+  const clientId = globalThis.crypto.randomUUID();
   const params = new URLSearchParams({
     chain, interval, limit: "50", order_by: "volume", direction: "desc",
     timestamp: String(timestamp), client_id: clientId
@@ -57,6 +57,7 @@ async function getGMGNTrendingTokens(chain, interval = "24h") {
         holderSource: item.holder_count != null || item.holders != null ? "GMGN" : null,
         source: "GMGN Agent API",
         gmgnRank: index + 1,
+        gmgnSource: "GMGN Agent API",
         marketDataAvailable: price > 0 && (liquidity > 0 || volume24h > 0)
       };
     }).filter(Boolean);
@@ -232,6 +233,8 @@ function mergeTokenLists(...lists) {
       createdAt: newer ? (token.createdAt || old.createdAt) : (old.createdAt || token.createdAt),
       holders: token.holders ?? old.holders ?? null,
       holderSource: token.holderSource || old.holderSource || null,
+      gmgnRank: token.gmgnRank ?? old.gmgnRank ?? null,
+      gmgnSource: token.gmgnSource || old.gmgnSource || null,
       marketDataAvailable: token.marketDataAvailable === false && Number(old.liquidity || 0) > 0
         ? true : token.marketDataAvailable
     });

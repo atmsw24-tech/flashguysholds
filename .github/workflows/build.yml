@@ -15,5 +15,5 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+      - run: npm install --no-package-lock
       - run: npm run build

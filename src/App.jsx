@@ -98,6 +98,42 @@ function TokenLogo({ token }) {
   return <div className="token-logo">{letter}</div>;
 }
 
+
+function LaunchpadTokenImage({ token }) {
+  const raw = String(
+    token.image || token.logo || token.imageUrl || token.image_uri ||
+    token.imageUri || token.icon || token.icon_url || ""
+  ).trim();
+  const ipfsPath = raw.startsWith("ipfs://ipfs/")
+    ? raw.slice("ipfs://ipfs/".length)
+    : raw.startsWith("ipfs://") ? raw.slice("ipfs://".length)
+    : raw.startsWith("ar://") ? raw.slice("ar://".length) : "";
+  const urls = ipfsPath
+    ? [
+        "https://dweb.link/ipfs/" + ipfsPath,
+        "https://gateway.pinata.cloud/ipfs/" + ipfsPath,
+        "https://ipfs.io/ipfs/" + ipfsPath
+      ]
+    : raw ? [raw] : [];
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => setAttempt(0), [token.address, token.mint, raw]);
+  const src = urls[attempt];
+  if (!src) {
+    return <div className="fb-launch-token-logo fb-launch-token-logo-fallback">{String(token.symbol || token.name || "◈").charAt(0).toUpperCase()}</div>;
+  }
+  return (
+    <img
+      className="fb-launch-token-logo"
+      src={src}
+      alt={token.name ? token.name + " token logo" : "Token logo"}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={() => setAttempt((current) => Math.min(current + 1, urls.length))}
+    />
+  );
+}
+
 function TokenSparkline({ token }) {
   const history = Array.isArray(token.priceHistory)
     ? token.priceHistory.map((point) => Number(point.price)).filter((price) => Number.isFinite(price) && price > 0).slice(-24)
@@ -1001,7 +1037,7 @@ function LaunchPage({ tokens = [] }) {
       </section> : null}
       <div className="fb-launch-toolbar"><div><span className="fb-section-eyebrow">THE LAUNCH FLOOR</span><h2>Explore {isSolana ? "Solana" : "Robinhood Chain"} launches</h2></div><div className="fb-launch-filters">{[["all","All coins"],["new","New"],["active","Active"],["graduated","Graduated"]].map(([value,label]) => <button key={value} className={tab===value?"active":""} onClick={() => setTab(value)}>{label}</button>)}</div></div>
       {visibleTokens.length ? <div className="fb-launch-grid">{visibleTokens.slice(0,50).map((token) => <article className="fb-launch-token" key={token.address || token.mint}>
-        <div className="fb-launch-token-top">{token.image || token.logo ? <img className="fb-launch-token-logo" src={token.image || token.logo} alt="" loading="lazy" /> : <div className="fb-launch-token-logo">◈</div>}<span className={token.graduated || token.isGraduated ? "fb-token-stage graduated" : "fb-token-stage"}>{token.graduated || token.isGraduated ? "GRADUATED" : Number(token.volume24h || token.volume1h || 0) > 0 ? "ACTIVE" : "INDEXED"}</span></div>
+        <div className="fb-launch-token-top"><LaunchpadTokenImage token={token} /><span className={token.graduated || token.isGraduated ? "fb-token-stage graduated" : "fb-token-stage"}>{token.graduated || token.isGraduated ? "GRADUATED" : Number(token.volume24h || token.volume1h || 0) > 0 ? "ACTIVE" : "INDEXED"}</span></div>
         <h3>{token.name || "Unknown token"}</h3><p className="fb-token-ticker">${token.symbol || "TOKEN"}</p>
         <div className="fb-token-metrics"><div><small>MARKET CAP</small><strong>{formatMcap(token.marketCap)}</strong></div><div><small>24H VOLUME</small><strong>{formatMcap(token.volume24h || token.volume1h)}</strong></div></div>
         <div className="fb-token-address">{String(token.address || token.mint || "").slice(0,8)}…{String(token.address || token.mint || "").slice(-6)}</div>

@@ -282,6 +282,9 @@ function securityRecordFor(chain, raw) {
   if (chain === "sol") {
     const status = (field) => field && typeof field === "object" ? field.status : undefined;
     if (flagIsOn(raw.creator?.malicious_address)) flags.push("Malicious creator");
+    if (flagIsOn(raw.fake_token?.value)) flags.push("Counterfeit token identity");
+    if (flagIsOn(raw.transfer_fee_upgradable?.status)) flags.push("Transfer fee can be upgraded");
+    if (flagIsOn(raw.default_account_state_upgradable?.status)) flags.push("Default account state can be upgraded");
     if (flagIsOn(raw.transfer_hook?.malicious_address)) flags.push("Malicious transfer hook");
     if (flagIsOn(status(raw.mintable))) flags.push("Mint authority remains active");
     if (flagIsOn(status(raw.freezable))) flags.push("Freeze authority remains active");

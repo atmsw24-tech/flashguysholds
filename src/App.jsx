@@ -1357,16 +1357,17 @@ export default function App() {
     } else if (tokenView === "trending") {
       // Trending mirrors GMGN's official 1h ranking; never substitute a different token list.
       result = result.filter((token) =>
-        token.gmgnSource === "GMGN Agent API" &&
-        Number(token.gmgnRank1h) > 0 &&
+        token.geckoTrendingSource === "GeckoTerminal" &&
+        token.geckoTrendingDuration === "1h" &&
+        Number(token.geckoTrendingRank) > 0 &&
         Number(token.price) > 0 &&
-        Number(token.marketCap) > 0 &&
         Number(token.liquidity) > 0 &&
-        Number(token.volume1h) > 0 &&
         token.securityStatus !== "risky"
       );
+      // Preserve GeckoTerminal's own 1h trending order rather than relabeling
+      // volume-sorted or newly-created pools as its trending ranking.
       result.sort((a, b) =>
-        Number(a.gmgnRank1h) - Number(b.gmgnRank1h)
+        Number(a.geckoTrendingRank) - Number(b.geckoTrendingRank)
       );
     } else {
       result.sort((a, b) =>
@@ -1467,7 +1468,7 @@ export default function App() {
               </h1>
 
               {page === "trending" ? (
-                <p>Trending tokens ranked by reported short-term volume, momentum, and liquidity.</p>
+                <p>Trending pools ranked by GeckoTerminal’s 1-hour trending list.</p>
               ) : (
                 <>
                   <p className="hero-tagline">In 2014, there were Flash Guys. Now, it’s time for FLASHBOYS. ⚡</p>

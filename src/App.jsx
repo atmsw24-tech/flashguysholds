@@ -882,7 +882,13 @@ function LaunchPage({ tokens = [] }) {
     const hasRealMarket = hasVerifiedLiveMarket(token)
       && validPairAddress
       && Number(token.volume24h || token.volume1h || 0) > 0;
-    return chainMatches && isRealTokenRecord(token) && hasRealMarket;
+    // Fail closed: no token enters Launchpad until GoPlus has returned a
+    // sufficiently complete report with no critical risk flags.
+    const securityCleared = token.securityProvider === "GoPlus"
+      && token.securityStatus === "clear"
+      && Array.isArray(token.securityFlags)
+      && token.securityFlags.length === 0;
+    return chainMatches && isRealTokenRecord(token) && hasRealMarket && securityCleared;
   });
   const visibleTokens = networkTokens.filter((token) => {
     if (tab === "new") {
@@ -1000,7 +1006,7 @@ function LaunchPage({ tokens = [] }) {
         <div className="fb-token-metrics"><div><small>MARKET CAP</small><strong>{formatMcap(token.marketCap)}</strong></div><div><small>24H VOLUME</small><strong>{formatMcap(token.volume24h || token.volume1h)}</strong></div></div>
         <div className="fb-token-address">{String(token.address || token.mint || "").slice(0,8)}…{String(token.address || token.mint || "").slice(-6)}</div>
         <a href={isSolana ? "https://solscan.io/token/" + encodeURIComponent(token.address || token.mint) : "https://robinhoodchain.blockscout.com/token/" + encodeURIComponent(token.address)} target="_blank" rel="noreferrer">View on {isSolana ? "Solscan" : "Blockscout"} ↗</a>
-      </article>)}</div> : <div className="fb-launch-empty"><div>✦</div><h3>No launches in this filter yet</h3><p>{isSolana ? "Only Solana tokens with a valid mint, real metadata, and a live, liquid market with trading activity are shown. New launches appear after their market data can be verified." : "Only Robinhood Chain tokens with a valid contract, real metadata, and a live, liquid market with trading activity are shown. New launches appear after their market data can be verified."}</p><button onClick={() => setTab("all")}>View all indexed coins</button></div>}
+      </article>)}</div> : <div className="fb-launch-empty"><div>✦</div><h3>No launches in this filter yet</h3><p>{isSolana ? "Only Solana tokens with a valid mint, real metadata, live trading, and a completed GoPlus security screen with no critical flags are shown. New launches remain hidden until their market and security data can be verified." : "Only Robinhood Chain tokens with a valid contract, real metadata, live trading, and a completed GoPlus security screen with no critical flags are shown. New launches remain hidden until their market and security data can be verified."}</p><button onClick={() => setTab("all")}>View all indexed coins</button></div>}
       <div className="fb-launchpad-footer"><span>FLASHBOYS LAUNCHPAD</span><span>{isSolana ? "Solana Mainnet" : "Robinhood Chain · Chain ID 4663"}</span><a href={isSolana ? "https://solscan.io/" : "https://robinhoodchain.blockscout.com/"} target="_blank" rel="noreferrer">Explorer ↗</a></div>
     </div>
   );

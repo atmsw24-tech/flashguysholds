@@ -1299,6 +1299,7 @@ export default function App() {
         hasVerifiedLiveMarket(token) && Number(token.volume24h || 0) > 0
       );
       result.sort((a, b) =>
+        (Number(a.gmgnRank || Number.POSITIVE_INFINITY) - Number(b.gmgnRank || Number.POSITIVE_INFINITY)) ||
         (Number(b.volume24h || 0) - Number(a.volume24h || 0)) ||
         (Number(b.marketCap || 0) - Number(a.marketCap || 0)) ||
         (Number(b.liquidity || 0) - Number(a.liquidity || 0))

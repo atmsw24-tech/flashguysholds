@@ -6,15 +6,11 @@ const ROBINHOOD_EXPLORER = "https://api.blockscout.com/4663/api/v2";
 // only; no trade/private-key permissions are used by this endpoint.
 async function getGMGNTrendingTokens(chain, interval = "24h") {
   const apiKey = process.env.GMGN_API_KEY;
-  if (!apiKey) return [];
-  if (!["sol", "robinhood"].includes(chain)) return [];
-
+  if (!apiKey || !["sol", "robinhood"].includes(chain)) return [];
   const timestamp = Math.floor(Date.now() / 1000);
   const clientId = globalThis.crypto.randomUUID();
-  const params = new URLSearchParams({
-    chain, interval, limit: "50", order_by: "volume", direction: "desc",
-    timestamp: String(timestamp), client_id: clientId
-  });
+  const params = new URLSearchParams({ chain, interval, limit: "50", order_by: "volume", direction: "desc", timestamp: String(timestamp), client_id: clientId });
+
   try {
     const response = await fetch(`https://openapi.gmgn.ai/v1/market/rank?${params}`, {
       headers: { "X-APIKEY": apiKey, "Accept": "application/json" }
@@ -25,46 +21,52 @@ async function getGMGNTrendingTokens(chain, interval = "24h") {
     }
     const envelope = await response.json();
     if (Number(envelope?.code) !== 0) {
-      console.warn("GMGN market rank rejected the request:", envelope?.error || envelope?.message || "unknown API error");
+      console.warn("GMGN market rank rejected request:", envelope?.error || envelope?.message || "unknown API error");
       return [];
     }
-    const data = envelope.data;
-    const rows = Array.isArray(data) ? data
-      : Array.isArray(data?.list) ? data.list
-      : Array.isArray(data?.tokens) ? data.tokens
-      : Array.isArray(data?.items) ? data.items
-      : Array.isArray(data?.rank) ? data.rank
-      : Array.isArray(data?.rank_list) ? data.rank_list : [];
+
+    // Official GMGN response schema: envelope.data.rank.
+    const rows = Array.isArray(envelope?.data?.rank) ? envelope.data.rank : [];
     const ranked = rows.slice(0, 50).map((item, index) => {
-      const address = item.address || item.token_address || item.tokenAddress || item.contract_address || item.mint;
+      const address = String(item.address || "").trim();
       if (!isValidContractAddress(chain, address)) return null;
-      const marketCap = Number(item.usd_market_cap ?? item.market_cap ?? item.marketCap ?? item.mcap ?? item.fdv ?? 0);
-      const volume24h = Number(item.volume_24h ?? item.volume24h ?? item.volume?.h24 ?? item.volume_usd ?? item.volume ?? 0);
-      const volume1h = Number(item.volume_1h ?? item.volume1h ?? item.volume?.h1 ?? 0);
-      const price = Number(item.price ?? item.price_usd ?? item.priceUsd ?? 0);
-      const liquidity = Number(item.liquidity ?? item.liquidity_usd ?? item.liquidityUsd ?? 0);
+      const intervalVolume = Number(item.volume || 0);
+      const timestampSeconds = Number(item.open_timestamp || item.creation_timestamp || 0);
+      const logo = item.logo || null;
       return {
-        id: address, chain, address,
-        name: item.name || item.token_name || item.symbol || "Unknown",
-        symbol: item.symbol || item.token_symbol || "???",
-        price, marketCap, liquidity, volume1h, volume24h,
-        change24h: Number(item.price_change_24h ?? item.change24h ?? item.price_change_percent ?? item.price_change?.h24 ?? 0),
-        createdAt: (() => { const created = item.created_at || item.created_timestamp || item.open_timestamp || item.launch_time || null; return typeof created === "number" && created < 1e12 ? created * 1000 : created; })(),
-        logo: item.logo || item.logo_url || item.image || item.icon || null,
-        image: item.logo || item.logo_url || item.image || item.icon || null,
-        pairAddress: item.pool_address || item.pair_address || item.pairAddress || null,
-        pairUrl: item.pool_url || item.pair_url || item.url || null,
-        holders: Number.isFinite(Number(item.holder_count ?? item.holders)) ? Number(item.holder_count ?? item.holders) : null,
-        holderSource: item.holder_count != null || item.holders != null ? "GMGN" : null,
-        source: "GMGN Agent API",
+        id: `${chain}:${address}`, chain, address,
+        name: item.name || item.symbol || "Unknown",
+        symbol: item.symbol || "???",
+        price: Number(item.price || 0),
+        marketCap: Number(item.market_cap || 0),
+        liquidity: Number(item.liquidity || 0),
+        volume24h: interval === "24h" ? intervalVolume : Number(item.volume_24h || 0),
+        volume1h: interval === "1h" ? intervalVolume : Number(item.volume_1h || 0),
+        change24h: interval === "24h" ? Number(item.price_change_percent || 0) : Number(item.price_change_percent24h || 0),
+        change1h: Number(item.price_change_percent1h || (interval === "1h" ? item.price_change_percent : 0) || 0),
+        createdAt: timestampSeconds ? timestampSeconds * 1000 : null,
+        logo, image: logo,
+        pairAddress: item.pool_address || item.pair_address || null,
+        pairUrl: item.pool_url || item.pair_url || null,
+        holders: Number.isFinite(Number(item.holder_count)) ? Number(item.holder_count) : null,
+        holderSource: item.holder_count != null ? "GMGN" : null,
+        swaps1h: Number(item.swaps || 0),
+        buys1h: Number(item.buys || 0),
+        sells1h: Number(item.sells || 0),
         gmgnRank: Number(item.rank || index + 1),
         gmgnSource: "GMGN Agent API",
-        marketDataAvailable: price > 0 && (liquidity > 0 || volume24h > 0)
+        source: "GMGN Agent API",
+        launchpad: item.launchpad_platform || null,
+        exchange: item.exchange || null,
+        smartDegenCount: Number(item.smart_degen_count || 0),
+        renownedCount: Number(item.renowned_count || 0),
+        rugRatio: item.rug_ratio == null ? null : Number(item.rug_ratio),
+        washTrading: item.is_wash_trading ?? null,
+        marketDataAvailable: Number(item.price) > 0 && Number(item.liquidity) > 0 && intervalVolume > 0
       };
     }).filter(Boolean);
 
-    // Enrich GMGN-ranked contracts with the app's DEX pair feed so the UI can
-    // verify an actual pool and fill missing live quote fields before display.
+    // Enrich the official GMGN list with pool URLs and image/DEX metadata.
     const dexPairs = await getTokenPairs(chain === "sol" ? "solana" : "robinhood", ranked.map((token) => token.address));
     return ranked.map((token) => {
       const pair = bestPairForToken(dexPairs, token.address);
@@ -77,8 +79,8 @@ async function getGMGNTrendingTokens(chain, interval = "24h") {
         liquidity: token.liquidity > 0 ? token.liquidity : market.liquidity,
         volume1h: token.volume1h > 0 ? token.volume1h : market.volume1h,
         volume24h: token.volume24h > 0 ? token.volume24h : market.volume24h,
-        pairAddress: token.pairAddress || market.pairAddress,
-        pairUrl: token.pairUrl || market.pairUrl,
+        pairAddress: market.pairAddress || token.pairAddress,
+        pairUrl: market.pairUrl || token.pairUrl,
         logo: token.logo || market.logo,
         image: token.image || market.image
       };
@@ -89,7 +91,6 @@ async function getGMGNTrendingTokens(chain, interval = "24h") {
   }
 }
 
- 
 // Validate that discovered contracts have the expected address shape for their
 // chain. This is not a security audit and does not certify a token as safe.
 function isValidContractAddress(chain, address) {

@@ -1340,15 +1340,19 @@ export default function App() {
     }
 
     if (tokenView === "top") {
-      // GMGN-style daily leaders: require a live pair and actual 24h activity.
+      // Daily Top must be the official GMGN 24h ranking only.
+      // Never fill missing GMGN slots with unrelated DEX/profile-feed tokens.
       result = result.filter((token) =>
-        hasVerifiedLiveMarket(token) && Number(token.volume24h || 0) > 0
+        token.gmgnSource === "GMGN Agent API" &&
+        Number(token.gmgnRank) > 0 &&
+        Number(token.price) > 0 &&
+        Number(token.marketCap) > 0 &&
+        Number(token.liquidity) > 0 &&
+        Number(token.volume24h) > 0 &&
+        token.securityStatus !== "risky"
       );
       result.sort((a, b) =>
-        (Number(a.gmgnRank || Number.POSITIVE_INFINITY) - Number(b.gmgnRank || Number.POSITIVE_INFINITY)) ||
-        (Number(b.volume24h || 0) - Number(a.volume24h || 0)) ||
-        (Number(b.marketCap || 0) - Number(a.marketCap || 0)) ||
-        (Number(b.liquidity || 0) - Number(a.liquidity || 0))
+        Number(a.gmgnRank) - Number(b.gmgnRank)
       );
     } else if (tokenView === "trending") {
       // Trending requires a live pair and measured short-term activity.

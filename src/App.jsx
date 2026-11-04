@@ -1344,7 +1344,7 @@ export default function App() {
       // Never fill missing GMGN slots with unrelated DEX/profile-feed tokens.
       result = result.filter((token) =>
         token.gmgnSource === "GMGN Agent API" &&
-        Number(token.gmgnRank) > 0 &&
+        Number(token.gmgnRank24h) > 0 &&
         Number(token.price) > 0 &&
         Number(token.marketCap) > 0 &&
         Number(token.liquidity) > 0 &&
@@ -1352,18 +1352,21 @@ export default function App() {
         token.securityStatus !== "risky"
       );
       result.sort((a, b) =>
-        Number(a.gmgnRank) - Number(b.gmgnRank)
+        Number(a.gmgnRank24h) - Number(b.gmgnRank24h)
       );
     } else if (tokenView === "trending") {
-      // Trending requires a live pair and measured short-term activity.
+      // Trending mirrors GMGN's official 1h ranking; never substitute a different token list.
       result = result.filter((token) =>
-        hasVerifiedLiveMarket(token) && Number(token.volume1h || 0) > 0
+        token.gmgnSource === "GMGN Agent API" &&
+        Number(token.gmgnRank1h) > 0 &&
+        Number(token.price) > 0 &&
+        Number(token.marketCap) > 0 &&
+        Number(token.liquidity) > 0 &&
+        Number(token.volume1h) > 0 &&
+        token.securityStatus !== "risky"
       );
       result.sort((a, b) =>
-        (Number(b.volume1h || 0) - Number(a.volume1h || 0)) ||
-        (Number(b.change1h || 0) - Number(a.change1h || 0)) ||
-        (Number(b.marketCap || 0) - Number(a.marketCap || 0)) ||
-        (Number(b.liquidity || 0) - Number(a.liquidity || 0))
+        Number(a.gmgnRank1h) - Number(b.gmgnRank1h)
       );
     } else {
       result.sort((a, b) =>

@@ -33,7 +33,17 @@ The current version contains:
 - PostgreSQL schema
 - Discovery worker foundation
 
-The displayed token dataset is currently demo/fallback data.
+Token discovery uses live provider integrations: GeckoTerminal new-pool feeds, DexScreener token profiles and market pairs, and Blockscout ERC-20 contract indexing for Robinhood Chain. Provider coverage is not a complete enumeration of every token ever created. Tokens without a verified live pair are not included in Top or Trending market rankings.
+
+## Optional GMGN market rankings
+
+FLASHGUYS can merge the official GMGN Agent API's read-only trending-token rankings into its discovery feed.
+
+1. Create a **read-only** API key at https://gmgn.ai/ai using GMGN's official setup.
+2. In Vercel → Project → Settings → Environment Variables, add `GMGN_API_KEY`.
+3. Apply it to Production (and Preview if desired), then redeploy.
+
+The API key is read only by the server-side `/api/tokens` function. Do not use a trading-enabled key for this integration. Do not add a GMGN private key, wallet private key, or seed phrase. If the key is absent or GMGN is unavailable, FLASHGUYS continues using its existing public market-data feeds. GMGN coverage and supported chains are controlled by GMGN; the app must not label fallback rankings as official GMGN rankings.
 
 ## Development
 

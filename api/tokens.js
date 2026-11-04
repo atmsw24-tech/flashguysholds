@@ -2,6 +2,106 @@ const DEX = "https://api.dexscreener.com";
 
 const ROBINHOOD_EXPLORER = "https://api.blockscout.com/4663/api/v2";
 
+// Official GMGN Agent API (read-only market ranking). The API key is server-side
+// only; no trade/private-key permissions are used by this endpoint.
+async function getGMGNTrendingTokens(chain, interval = "24h") {
+  const apiKey = process.env.GMGN_API_KEY;
+  if (!apiKey) return [];
+  if (!["sol", "robinhood"].includes(chain)) return [];
+
+  const timestamp = Math.floor(Date.now() / 1000);
+  const clientId = globalThis.crypto.randomUUID();
+  const params = new URLSearchParams({
+    chain, interval, limit: "50", order_by: "volume", direction: "desc",
+    timestamp: String(timestamp), client_id: clientId
+  });
+  try {
+    const response = await fetch(`https://openapi.gmgn.ai/v1/market/rank?${params}`, {
+      headers: { "X-APIKEY": apiKey, "Accept": "application/json" }
+    });
+    if (!response.ok) {
+      console.warn(`GMGN market rank returned ${response.status}`);
+      return [];
+    }
+    const envelope = await response.json();
+    if (Number(envelope?.code) !== 0) {
+      console.warn("GMGN market rank rejected the request:", envelope?.error || envelope?.message || "unknown API error");
+      return [];
+    }
+    const data = envelope.data;
+    const rows = Array.isArray(data) ? data
+      : Array.isArray(data?.list) ? data.list
+      : Array.isArray(data?.tokens) ? data.tokens
+      : Array.isArray(data?.items) ? data.items
+      : Array.isArray(data?.rank) ? data.rank
+      : Array.isArray(data?.rank_list) ? data.rank_list : [];
+    const ranked = rows.slice(0, 50).map((item, index) => {
+      const address = item.address || item.token_address || item.tokenAddress || item.contract_address || item.mint;
+      if (!isValidContractAddress(chain, address)) return null;
+      const marketCap = Number(item.usd_market_cap ?? item.market_cap ?? item.marketCap ?? item.mcap ?? item.fdv ?? 0);
+      const volume24h = Number(item.volume_24h ?? item.volume24h ?? item.volume?.h24 ?? item.volume_usd ?? item.volume ?? 0);
+      const volume1h = Number(item.volume_1h ?? item.volume1h ?? item.volume?.h1 ?? 0);
+      const price = Number(item.price ?? item.price_usd ?? item.priceUsd ?? 0);
+      const liquidity = Number(item.liquidity ?? item.liquidity_usd ?? item.liquidityUsd ?? 0);
+      return {
+        id: address, chain, address,
+        name: item.name || item.token_name || item.symbol || "Unknown",
+        symbol: item.symbol || item.token_symbol || "???",
+        price, marketCap, liquidity, volume1h, volume24h,
+        change24h: Number(item.price_change_24h ?? item.change24h ?? item.price_change_percent ?? item.price_change?.h24 ?? 0),
+        createdAt: (() => { const created = item.created_at || item.created_timestamp || item.open_timestamp || item.launch_time || null; return typeof created === "number" && created < 1e12 ? created * 1000 : created; })(),
+        logo: item.logo || item.logo_url || item.image || item.icon || null,
+        image: item.logo || item.logo_url || item.image || item.icon || null,
+        pairAddress: item.pool_address || item.pair_address || item.pairAddress || null,
+        pairUrl: item.pool_url || item.pair_url || item.url || null,
+        holders: Number.isFinite(Number(item.holder_count ?? item.holders)) ? Number(item.holder_count ?? item.holders) : null,
+        holderSource: item.holder_count != null || item.holders != null ? "GMGN" : null,
+        source: "GMGN Agent API",
+        gmgnRank: Number(item.rank || index + 1),
+        gmgnSource: "GMGN Agent API",
+        marketDataAvailable: price > 0 && (liquidity > 0 || volume24h > 0)
+      };
+    }).filter(Boolean);
+
+    // Enrich GMGN-ranked contracts with the app's DEX pair feed so the UI can
+    // verify an actual pool and fill missing live quote fields before display.
+    const dexPairs = await getTokenPairs(chain === "sol" ? "solana" : "robinhood", ranked.map((token) => token.address));
+    return ranked.map((token) => {
+      const pair = bestPairForToken(dexPairs, token.address);
+      const market = pair ? toMarketToken({ tokenAddress: token.address }, pair, chain) : null;
+      if (!market) return token;
+      return {
+        ...market, ...token,
+        price: token.price > 0 ? token.price : market.price,
+        marketCap: token.marketCap > 0 ? token.marketCap : market.marketCap,
+        liquidity: token.liquidity > 0 ? token.liquidity : market.liquidity,
+        volume1h: token.volume1h > 0 ? token.volume1h : market.volume1h,
+        volume24h: token.volume24h > 0 ? token.volume24h : market.volume24h,
+        pairAddress: token.pairAddress || market.pairAddress,
+        pairUrl: token.pairUrl || market.pairUrl,
+        logo: token.logo || market.logo,
+        image: token.image || market.image
+      };
+    });
+  } catch (error) {
+    console.warn("GMGN market rank unavailable:", error?.message || error);
+    return [];
+  }
+}
+
+ 
+// Validate that discovered contracts have the expected address shape for their
+// chain. This is not a security audit and does not certify a token as safe.
+function isValidContractAddress(chain, address) {
+  const value = String(address || "").trim();
+  if (chain === "robinhood") return /^0x[a-fA-F0-9]{40}$/.test(value);
+  if (chain === "sol" || chain === "solana") {
+    return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value);
+  }
+  return false;
+}
+
+
 // Optional persistent token cache. Vercel functions are ephemeral, so PostgreSQL
 // is the durable layer; API responses still work when DATABASE_URL is not set.
 let dbPoolPromise;
@@ -34,7 +134,7 @@ async function persistTokens(tokens) {
       )
     `);
     for (const token of tokens) {
-      if (!token?.address || !["sol", "solana", "robinhood"].includes(token.chain)) continue;
+      if (!token?.address || !["sol", "solana", "robinhood"].includes(token.chain) || !isValidContractAddress(token.chain, token.address)) continue;
       await pool.query(
         `INSERT INTO flashguys_token_cache (chain, address, payload, first_seen_at, last_seen_at)
          VALUES ($1, $2, $3::jsonb, COALESCE(NULLIF($4, '')::timestamptz, now()), now())
@@ -155,6 +255,8 @@ function mergeTokenLists(...lists) {
       createdAt: newer ? (token.createdAt || old.createdAt) : (old.createdAt || token.createdAt),
       holders: token.holders ?? old.holders ?? null,
       holderSource: token.holderSource || old.holderSource || null,
+      gmgnRank: token.gmgnRank ?? old.gmgnRank ?? null,
+      gmgnSource: token.gmgnSource || old.gmgnSource || null,
       marketDataAvailable: token.marketDataAvailable === false && Number(old.liquidity || 0) > 0
         ? true : token.marketDataAvailable
     });
@@ -589,14 +691,18 @@ export default async function handler(req, res) {
       console.warn("DexScreener latest profiles unavailable:", error?.message || error);
       return [];
     });
-    const [solanaResult, robinhoodResult] = await Promise.allSettled([
+    const [solanaResult, robinhoodResult, gmgnSolResult, gmgnRobinhoodResult] = await Promise.allSettled([
       chain === "robinhood" ? Promise.resolve([]) : getSolanaTokens(profiles),
-      chain === "sol" ? Promise.resolve([]) : getRobinhoodTokens(profiles)
+      chain === "sol" ? Promise.resolve([]) : getRobinhoodTokens(profiles),
+      chain === "robinhood" ? Promise.resolve([]) : getGMGNTrendingTokens("sol", "24h"),
+      chain === "sol" ? Promise.resolve([]) : getGMGNTrendingTokens("robinhood", "24h")
     ]);
 
     const liveTokens = await addHolderCounts([
       ...(solanaResult.status === "fulfilled" ? solanaResult.value : []),
-      ...(robinhoodResult.status === "fulfilled" ? robinhoodResult.value : [])
+      ...(robinhoodResult.status === "fulfilled" ? robinhoodResult.value : []),
+      ...(gmgnSolResult.status === "fulfilled" ? gmgnSolResult.value : []),
+      ...(gmgnRobinhoodResult.status === "fulfilled" ? gmgnRobinhoodResult.value : [])
     ]);
 
     // Persist each live refresh when DATABASE_URL is configured, then merge
@@ -611,6 +717,8 @@ export default async function handler(req, res) {
     const errors = [];
     if (solanaResult.status === "rejected") errors.push("Solana feed temporarily unavailable");
     if (robinhoodResult.status === "rejected") errors.push("Robinhood Chain feed temporarily unavailable");
+    if (process.env.GMGN_API_KEY && gmgnSolResult.status === "rejected") errors.push("GMGN Solana ranking temporarily unavailable");
+    if (process.env.GMGN_API_KEY && gmgnRobinhoodResult.status === "rejected") errors.push("GMGN Robinhood ranking temporarily unavailable");
 
     if (!tokens.length && errors.length) {
       return send(res, 502, { success: false, error: errors.join("; "), tokens: [] });
@@ -620,8 +728,11 @@ export default async function handler(req, res) {
       success: true,
       tokens,
       updatedAt: new Date().toISOString(),
-      source: chain === "robinhood" ? "Blockscout + GeckoTerminal + DexScreener" : chain === "sol" ? "GeckoTerminal + DexScreener" : "Blockscout + GeckoTerminal + DexScreener",
-      note: null,
+      source: process.env.GMGN_API_KEY
+        ? "GMGN Agent API + Blockscout + GeckoTerminal + DexScreener"
+        : "Blockscout + GeckoTerminal + DexScreener",
+      gmgnEnabled: Boolean(process.env.GMGN_API_KEY),
+      note: process.env.GMGN_API_KEY ? null : "Add GMGN_API_KEY in Vercel to enable official GMGN rankings.",
       warnings: errors
     });
   } catch (error) {

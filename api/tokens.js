@@ -824,7 +824,7 @@ export default async function handler(req, res) {
 
     return send(res, 200, {
       success: true,
-      tokens,
+      tokens: screenedTokens,
       updatedAt: new Date().toISOString(),
       source: process.env.GMGN_API_KEY
         ? "GMGN Agent API + Blockscout + GeckoTerminal + DexScreener"

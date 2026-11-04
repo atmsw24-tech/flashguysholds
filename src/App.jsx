@@ -8,6 +8,15 @@ import "./styles.css";
 const MAX_VISIBLE_TOKENS = 50;
 const MAX_STORED_TOKENS = 1500;
 
+// Only render tokens with a real, chain-shaped contract/mint address (CA).
+function hasContractAddress(token) {
+  const address = String(token?.address || token?.mint || "").trim();
+  const chain = String(token?.chain || "").toLowerCase();
+  if (chain === "robinhood") return /^0x[a-fA-F0-9]{40}$/.test(address);
+  if (chain === "sol" || chain === "solana") return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address);
+  return false;
+}
+
 function formatNumber(value) {
   const number = Number(value || 0);
 
@@ -924,7 +933,7 @@ function LaunchPage({ tokens = [] }) {
       && token.securityStatus === "clear"
       && Array.isArray(token.securityFlags)
       && token.securityFlags.length === 0;
-    return chainMatches && isRealTokenRecord(token) && hasRealMarket && securityCleared;
+    return chainMatches && hasContractAddress(token) && isRealTokenRecord(token) && hasRealMarket && securityCleared;
   });
   const visibleTokens = networkTokens.filter((token) => {
     if (tab === "new") {
@@ -1306,10 +1315,10 @@ export default function App() {
 
     const combined = new Map();
     [...tokens, ...remoteSearchTokens].forEach((token) => {
-      const key = String(token.address || token.mint || token.id || "").toLowerCase();
-      if (key) combined.set(key, { ...combined.get(key), ...token });
+      const key = String(token.address || token.mint || "").trim().toLowerCase();
+      if (key && hasContractAddress(token)) combined.set(key, { ...combined.get(key), ...token });
     });
-    let result = [...combined.values()].filter(isRealTokenRecord);
+    let result = [...combined.values()].filter((token) => hasContractAddress(token) && isRealTokenRecord(token));
 
     if (watchlistOnly) { const saved = new Set(watchlist.map((item) => item.address)); result = result.filter((token) => saved.has(String(token.address || token.mint || token.id || "").toLowerCase())); }
 

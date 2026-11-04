@@ -792,18 +792,22 @@ export default async function handler(req, res) {
       console.warn("DexScreener latest profiles unavailable:", error?.message || error);
       return [];
     });
-    const [solanaResult, robinhoodResult, gmgnSolResult, gmgnRobinhoodResult] = await Promise.allSettled([
+    const [solanaResult, robinhoodResult, gmgnSolResult, gmgnRobinhoodResult, gmgnSolTrendingResult, gmgnRobinhoodTrendingResult] = await Promise.allSettled([
       chain === "robinhood" ? Promise.resolve([]) : getSolanaTokens(profiles),
       chain === "sol" ? Promise.resolve([]) : getRobinhoodTokens(profiles),
       chain === "robinhood" ? Promise.resolve([]) : getGMGNTrendingTokens("sol", "24h"),
-      chain === "sol" ? Promise.resolve([]) : getGMGNTrendingTokens("robinhood", "24h")
+      chain === "sol" ? Promise.resolve([]) : getGMGNTrendingTokens("robinhood", "24h"),
+      chain === "robinhood" ? Promise.resolve([]) : getGMGNTrendingTokens("sol", "1h"),
+      chain === "sol" ? Promise.resolve([]) : getGMGNTrendingTokens("robinhood", "1h")
     ]);
 
     const liveTokens = await addHolderCounts([
       ...(solanaResult.status === "fulfilled" ? solanaResult.value : []),
       ...(robinhoodResult.status === "fulfilled" ? robinhoodResult.value : []),
       ...(gmgnSolResult.status === "fulfilled" ? gmgnSolResult.value : []),
-      ...(gmgnRobinhoodResult.status === "fulfilled" ? gmgnRobinhoodResult.value : [])
+      ...(gmgnRobinhoodResult.status === "fulfilled" ? gmgnRobinhoodResult.value : []),
+      ...(gmgnSolTrendingResult.status === "fulfilled" ? gmgnSolTrendingResult.value : []),
+      ...(gmgnRobinhoodTrendingResult.status === "fulfilled" ? gmgnRobinhoodTrendingResult.value : [])
     ]);
 
     // Persist each live refresh when DATABASE_URL is configured, then merge

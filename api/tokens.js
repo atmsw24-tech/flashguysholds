@@ -569,17 +569,22 @@ function toMarketToken(profile, pair, chain) {
 }
 
 async function getGeckoTerminalSolanaPools() {
-  // Read several pages of GeckoTerminal's newest Solana pools instead of only
-  // page one. This broadens discovery beyond DexScreener's curated profile feed.
-  const pages = await Promise.all([1, 2, 3, 4, 5].map(async (page) => {
+  // GeckoTerminal is the primary indexed DEX pool source for Solana discovery.
+  // Keep page requests sequential and limited to reduce pressure on its free API.
+  const unique = new Map();
+  for (const page of [1, 2, 3]) {
     try {
       const response = await fetch(
         `https://api.geckoterminal.com/api/v2/networks/solana/new_pools?page=${page}&include=base_token,quote_token`,
-        { headers: { accept: "application/json" } }
+        {
+          headers: { accept: "application/json;version=20230203" },
+          signal: AbortSignal.timeout(8000)
+        }
       );
       if (!response.ok) {
         console.warn(`GeckoTerminal Solana new-pools page ${page} returned ${response.status}`);
-        return [];
+        if (response.status === 429) break;
+        continue;
       }
       const payload = await response.json();
       const included = new Map(
@@ -587,44 +592,50 @@ async function getGeckoTerminalSolanaPools() {
           .filter((item) => item.type === "token")
           .map((item) => [item.id, item.attributes || {}])
       );
-      return (Array.isArray(payload.data) ? payload.data : []).map((pool) => {
+      for (const pool of (Array.isArray(payload.data) ? payload.data : [])) {
         const attrs = pool.attributes || {};
         const baseId = pool.relationships?.base_token?.data?.id;
         const base = included.get(baseId) || {};
         const address = base.address || (baseId ? baseId.replace(/^token_/, "") : null);
-        if (!address) return null;
+        if (!address || !isValidContractAddress("sol", address)) continue;
         const volume = attrs.volume_usd || {};
         const change = attrs.price_change_percentage || {};
-        return {
-          id: pool.id, chain: "sol", address,
+        const token = {
+          id: pool.id,
+          chain: "sol",
+          address,
           name: base.name || String(attrs.name || "Unknown").split(" / ")[0],
           symbol: base.symbol || "???",
           price: Number(attrs.base_token_price_usd || 0),
           marketCap: Number(attrs.market_cap_usd || attrs.fdv_usd || 0),
           liquidity: Number(attrs.reserve_in_usd || 0),
-          volume1h: Number(volume.h1 || 0), volume24h: Number(volume.h24 || 0),
+          volume1h: Number(volume.h1 || 0),
+          volume24h: Number(volume.h24 || 0),
           change24h: Number(change.h24 || 0),
           createdAt: attrs.pool_created_at || null,
           pairCreatedAt: attrs.pool_created_at || null,
-          logo: base.image_url || null, image: base.image_url || null,
+          logo: base.image_url || null,
+          image: base.image_url || null,
           pairAddress: attrs.address || null,
           pairUrl: `https://www.geckoterminal.com/solana/pools/${attrs.address || pool.id}`,
-          dexId: attrs.dex_id || null, source: `GeckoTerminal page ${page}`,
-          protocol: attrs.dex_id || null, holders: null, holderSource: null
+          dexId: attrs.dex_id || null,
+          source: "GeckoTerminal",
+          protocol: attrs.dex_id || null,
+          holders: null,
+          holderSource: null,
+          marketDataAvailable: Number(attrs.base_token_price_usd || 0) > 0 && Number(attrs.reserve_in_usd || 0) > 0
         };
-      }).filter(Boolean);
+        const key = address.toLowerCase();
+        const previous = unique.get(key);
+        if (!previous || Number(token.liquidity || 0) > Number(previous.liquidity || 0)) unique.set(key, token);
+      }
     } catch (error) {
       console.warn(`GeckoTerminal Solana page ${page} failed:`, error?.message || error);
-      return [];
     }
-  }));
-  const unique = new Map();
-  for (const token of pages.flat()) {
-    const key = String(token.address).toLowerCase();
-    const previous = unique.get(key);
-    if (!previous || Number(token.liquidity || 0) > Number(previous.liquidity || 0)) unique.set(key, token);
   }
-  return [...unique.values()];
+  return [...unique.values()].sort((a, b) =>
+    new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+  );
 }
 async function getSolanaTokens(profiles) {
   // DexScreener profile discovery alone misses many brand-new Solana launches.
@@ -776,7 +787,7 @@ async function getRobinhoodTokens(profiles) {
 
 export default async function handler(req, res) {
   // Let Vercel cache market data briefly; websocket feeds handle live launches.
-  res.setHeader("Cache-Control", "s-maxage=15, stale-while-revalidate=45");
+  res.setHeader("Cache-Control", "s-maxage=30, stale-while-revalidate=60");
   res.setHeader("Access-Control-Allow-Origin", "*");
 
   if (req.method !== "GET") {

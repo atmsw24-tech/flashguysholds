@@ -682,6 +682,70 @@ async function getSolanaTokens(profiles) {
   );
 }
 
+
+async function getGeckoTerminalTrendingPools(chain, duration = "1h") {
+  const network = chain === "sol" ? "solana" : "robinhood";
+  try {
+    const response = await fetch(
+      `https://api.geckoterminal.com/api/v2/networks/${network}/trending_pools?duration=${duration}&page=1&include=base_token,quote_token`,
+      {
+        headers: { accept: "application/json;version=20230203" },
+        signal: AbortSignal.timeout(8000)
+      }
+    );
+    if (!response.ok) {
+      console.warn(`GeckoTerminal ${network} trending pools returned ${response.status}`);
+      return [];
+    }
+    const payload = await response.json();
+    const included = new Map(
+      (Array.isArray(payload.included) ? payload.included : [])
+        .filter((item) => item.type === "token")
+        .map((item) => [item.id, item.attributes || {}])
+    );
+    return (Array.isArray(payload.data) ? payload.data : []).map((pool, index) => {
+      const attrs = pool.attributes || {};
+      const baseId = pool.relationships?.base_token?.data?.id;
+      const base = included.get(baseId) || {};
+      const address = base.address || (baseId ? baseId.replace(/^token_/, "") : null);
+      if (!address || !isValidContractAddress(chain, address)) return null;
+      const volume = attrs.volume_usd || {};
+      const change = attrs.price_change_percentage || {};
+      return {
+        id: pool.id,
+        chain,
+        address,
+        name: base.name || String(attrs.name || "Unknown").split(" / ")[0],
+        symbol: base.symbol || "???",
+        price: Number(attrs.base_token_price_usd || 0),
+        marketCap: Number(attrs.market_cap_usd || attrs.fdv_usd || 0),
+        liquidity: Number(attrs.reserve_in_usd || 0),
+        volume1h: Number(volume.h1 || 0),
+        volume24h: Number(volume.h24 || 0),
+        change24h: Number(change.h24 || 0),
+        change1h: Number(change.h1 || 0),
+        createdAt: attrs.pool_created_at || null,
+        pairCreatedAt: attrs.pool_created_at || null,
+        logo: base.image_url || null,
+        image: base.image_url || null,
+        pairAddress: attrs.address || null,
+        pairUrl: `https://www.geckoterminal.com/${network}/pools/${attrs.address || pool.id}`,
+        dexId: attrs.dex_id || null,
+        source: "GeckoTerminal Trending",
+        geckoTrendingSource: "GeckoTerminal",
+        geckoTrendingDuration: duration,
+        geckoTrendingRank: index + 1,
+        holders: null,
+        holderSource: null,
+        marketDataAvailable: Number(attrs.base_token_price_usd || 0) > 0 && Number(attrs.reserve_in_usd || 0) > 0
+      };
+    }).filter(Boolean);
+  } catch (error) {
+    console.warn(`GeckoTerminal ${network} trending request failed:`, error?.message || error);
+    return [];
+  }
+}
+
 async function getGeckoTerminalRobinhoodPools() {
   // DexScreener's latest-profile list is a small promotional list, not a
   // complete token directory. Use GeckoTerminal's indexed new-pools feed as
@@ -809,13 +873,15 @@ export default async function handler(req, res) {
       console.warn("DexScreener latest profiles unavailable:", error?.message || error);
       return [];
     });
-    const [solanaResult, robinhoodResult, gmgnSolResult, gmgnRobinhoodResult, gmgnSolTrendingResult, gmgnRobinhoodTrendingResult] = await Promise.allSettled([
+    const [solanaResult, robinhoodResult, gmgnSolResult, gmgnRobinhoodResult, gmgnSolTrendingResult, gmgnRobinhoodTrendingResult, geckoSolTrendingResult, geckoRobinhoodTrendingResult] = await Promise.allSettled([
       chain === "robinhood" ? Promise.resolve([]) : getSolanaTokens(profiles),
       chain === "sol" ? Promise.resolve([]) : getRobinhoodTokens(profiles),
       chain === "robinhood" ? Promise.resolve([]) : getGMGNTrendingTokens("sol", "24h"),
       chain === "sol" ? Promise.resolve([]) : getGMGNTrendingTokens("robinhood", "24h"),
       chain === "robinhood" ? Promise.resolve([]) : getGMGNTrendingTokens("sol", "1h"),
-      chain === "sol" ? Promise.resolve([]) : getGMGNTrendingTokens("robinhood", "1h")
+      chain === "sol" ? Promise.resolve([]) : getGMGNTrendingTokens("robinhood", "1h"),
+      chain === "robinhood" ? Promise.resolve([]) : getGeckoTerminalTrendingPools("sol", "1h"),
+      chain === "sol" ? Promise.resolve([]) : getGeckoTerminalTrendingPools("robinhood", "1h")
     ]);
 
     const liveTokens = await addHolderCounts([
@@ -824,7 +890,9 @@ export default async function handler(req, res) {
       ...(gmgnSolResult.status === "fulfilled" ? gmgnSolResult.value : []),
       ...(gmgnRobinhoodResult.status === "fulfilled" ? gmgnRobinhoodResult.value : []),
       ...(gmgnSolTrendingResult.status === "fulfilled" ? gmgnSolTrendingResult.value : []),
-      ...(gmgnRobinhoodTrendingResult.status === "fulfilled" ? gmgnRobinhoodTrendingResult.value : [])
+      ...(gmgnRobinhoodTrendingResult.status === "fulfilled" ? gmgnRobinhoodTrendingResult.value : []),
+      ...(geckoSolTrendingResult.status === "fulfilled" ? geckoSolTrendingResult.value : []),
+      ...(geckoRobinhoodTrendingResult.status === "fulfilled" ? geckoRobinhoodTrendingResult.value : [])
     ]);
 
     // Persist each live refresh when DATABASE_URL is configured, then merge
@@ -853,8 +921,8 @@ export default async function handler(req, res) {
       tokens: screenedTokens,
       updatedAt: new Date().toISOString(),
       source: process.env.GMGN_API_KEY
-        ? "GMGN Agent API + Blockscout + GeckoTerminal + DexScreener"
-        : "Blockscout + GeckoTerminal + DexScreener",
+        ? "GMGN Agent API + GeckoTerminal + Blockscout + DexScreener"
+        : "GeckoTerminal + Blockscout + DexScreener",
       gmgnEnabled: Boolean(process.env.GMGN_API_KEY),
       note: process.env.GMGN_API_KEY ? null : "Add GMGN_API_KEY in Vercel to enable official GMGN rankings.",
       warnings: errors

@@ -866,19 +866,23 @@ function LaunchPage({ tokens = [] }) {
   const [pinataMessage, setPinataMessage] = useState("");
   const [pinataResult, setPinataResult] = useState(null);
   const isSolana = network === "sol";
-  // Only render records with an on-chain contract/mint and real token metadata.
-  // Missing market metrics stay explicitly unavailable; they are never replaced with estimates.
+  // Launchpad is a verified-market view, not a raw token-address dump.
+  // Hide malformed contracts, placeholder metadata, and tokens with no live,
+  // liquid DEX pool or measurable trading activity. A valid address alone
+  // never proves that a token is legitimate or safe.
   const networkTokens = tokens.filter((token) => {
+    const tokenChain = String(token.chain || "").toLowerCase();
     const chainMatches = isSolana
-      ? ["sol", "solana"].includes(String(token.chain || "").toLowerCase())
-      : String(token.chain || "").toLowerCase() === "robinhood";
-    const address = String(token.address || token.mint || "");
-    const validAddress = isSolana
-      ? /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)
-      : /^0x[a-fA-F0-9]{40}$/.test(address);
-    const validName = token.name && !["unknown", "???", "token"].includes(String(token.name).toLowerCase());
-    const validSymbol = token.symbol && !["???", "token"].includes(String(token.symbol).toLowerCase());
-    return chainMatches && validAddress && validName && validSymbol;
+      ? ["sol", "solana"].includes(tokenChain)
+      : tokenChain === "robinhood";
+    const pairAddress = String(token.pairAddress || "").trim();
+    const validPairAddress = isSolana
+      ? /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(pairAddress)
+      : /^0x[a-fA-F0-9]{40}$/.test(pairAddress);
+    const hasRealMarket = hasVerifiedLiveMarket(token)
+      && validPairAddress
+      && Number(token.volume24h || token.volume1h || 0) > 0;
+    return chainMatches && isRealTokenRecord(token) && hasRealMarket;
   });
   const visibleTokens = networkTokens.filter((token) => {
     if (tab === "new") {
@@ -996,7 +1000,7 @@ function LaunchPage({ tokens = [] }) {
         <div className="fb-token-metrics"><div><small>MARKET CAP</small><strong>{formatMcap(token.marketCap)}</strong></div><div><small>24H VOLUME</small><strong>{formatMcap(token.volume24h || token.volume1h)}</strong></div></div>
         <div className="fb-token-address">{String(token.address || token.mint || "").slice(0,8)}…{String(token.address || token.mint || "").slice(-6)}</div>
         <a href={isSolana ? "https://solscan.io/token/" + encodeURIComponent(token.address || token.mint) : "https://robinhoodchain.blockscout.com/token/" + encodeURIComponent(token.address)} target="_blank" rel="noreferrer">View on {isSolana ? "Solscan" : "Blockscout"} ↗</a>
-      </article>)}</div> : <div className="fb-launch-empty"><div>✦</div><h3>No launches in this filter yet</h3><p>{isSolana ? "Solana tokens discovered by FLASHGUYS will appear here as the live feed indexes them." : "Robinhood Chain tokens discovered by FLASHGUYS will appear here as the market feed indexes them."}</p><button onClick={() => setTab("all")}>View all indexed coins</button></div>}
+      </article>)}</div> : <div className="fb-launch-empty"><div>✦</div><h3>No launches in this filter yet</h3><p>{isSolana ? "Only Solana tokens with a valid mint, real metadata, and a live, liquid market with trading activity are shown. New launches appear after their market data can be verified." : "Only Robinhood Chain tokens with a valid contract, real metadata, and a live, liquid market with trading activity are shown. New launches appear after their market data can be verified."}</p><button onClick={() => setTab("all")}>View all indexed coins</button></div>}
       <div className="fb-launchpad-footer"><span>FLASHBOYS LAUNCHPAD</span><span>{isSolana ? "Solana Mainnet" : "Robinhood Chain · Chain ID 4663"}</span><a href={isSolana ? "https://solscan.io/" : "https://robinhoodchain.blockscout.com/"} target="_blank" rel="noreferrer">Explorer ↗</a></div>
     </div>
   );

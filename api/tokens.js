@@ -54,6 +54,8 @@ async function getGMGNTrendingTokens(chain, interval = "24h") {
         buys1h: Number(item.buys || 0),
         sells1h: Number(item.sells || 0),
         gmgnRank: Number(item.rank || index + 1),
+        gmgnRank24h: interval === "24h" ? Number(item.rank || index + 1) : null,
+        gmgnRank1h: interval === "1h" ? Number(item.rank || index + 1) : null,
         gmgnSource: "GMGN Agent API",
         source: "GMGN Agent API",
         launchpad: item.launchpad_platform || null,
@@ -257,7 +259,11 @@ function mergeTokenLists(...lists) {
       holders: token.holders ?? old.holders ?? null,
       holderSource: token.holderSource || old.holderSource || null,
       gmgnRank: token.gmgnRank ?? old.gmgnRank ?? null,
+      gmgnRank24h: token.gmgnRank24h ?? old.gmgnRank24h ?? null,
+      gmgnRank1h: token.gmgnRank1h ?? old.gmgnRank1h ?? null,
       gmgnSource: token.gmgnSource || old.gmgnSource || null,
+      volume24h: Math.max(Number(token.volume24h || 0), Number(old.volume24h || 0)),
+      volume1h: Math.max(Number(token.volume1h || 0), Number(old.volume1h || 0)),
       marketDataAvailable: token.marketDataAvailable === false && Number(old.liquidity || 0) > 0
         ? true : token.marketDataAvailable
     });

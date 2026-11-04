@@ -33,12 +33,13 @@ async function getGMGNTrendingTokens(chain, interval = "24h") {
       : Array.isArray(data?.list) ? data.list
       : Array.isArray(data?.tokens) ? data.tokens
       : Array.isArray(data?.items) ? data.items
+      : Array.isArray(data?.rank) ? data.rank
       : Array.isArray(data?.rank_list) ? data.rank_list : [];
     const ranked = rows.slice(0, 50).map((item, index) => {
       const address = item.address || item.token_address || item.tokenAddress || item.contract_address || item.mint;
       if (!isValidContractAddress(chain, address)) return null;
       const marketCap = Number(item.usd_market_cap ?? item.market_cap ?? item.marketCap ?? item.mcap ?? item.fdv ?? 0);
-      const volume24h = Number(item.volume_24h ?? item.volume24h ?? item.volume?.h24 ?? item.volume_usd ?? 0);
+      const volume24h = Number(item.volume_24h ?? item.volume24h ?? item.volume?.h24 ?? item.volume_usd ?? item.volume ?? 0);
       const volume1h = Number(item.volume_1h ?? item.volume1h ?? item.volume?.h1 ?? 0);
       const price = Number(item.price ?? item.price_usd ?? item.priceUsd ?? 0);
       const liquidity = Number(item.liquidity ?? item.liquidity_usd ?? item.liquidityUsd ?? 0);
@@ -47,8 +48,8 @@ async function getGMGNTrendingTokens(chain, interval = "24h") {
         name: item.name || item.token_name || item.symbol || "Unknown",
         symbol: item.symbol || item.token_symbol || "???",
         price, marketCap, liquidity, volume1h, volume24h,
-        change24h: Number(item.price_change_24h ?? item.change24h ?? item.price_change?.h24 ?? 0),
-        createdAt: item.created_at || item.created_timestamp || item.open_timestamp || item.launch_time || null,
+        change24h: Number(item.price_change_24h ?? item.change24h ?? item.price_change_percent ?? item.price_change?.h24 ?? 0),
+        createdAt: (() => { const created = item.created_at || item.created_timestamp || item.open_timestamp || item.launch_time || null; return typeof created === "number" && created < 1e12 ? created * 1000 : created; })(),
         logo: item.logo || item.logo_url || item.image || item.icon || null,
         image: item.logo || item.logo_url || item.image || item.icon || null,
         pairAddress: item.pool_address || item.pair_address || item.pairAddress || null,
@@ -56,7 +57,7 @@ async function getGMGNTrendingTokens(chain, interval = "24h") {
         holders: Number.isFinite(Number(item.holder_count ?? item.holders)) ? Number(item.holder_count ?? item.holders) : null,
         holderSource: item.holder_count != null || item.holders != null ? "GMGN" : null,
         source: "GMGN Agent API",
-        gmgnRank: index + 1,
+        gmgnRank: Number(item.rank || index + 1),
         gmgnSource: "GMGN Agent API",
         marketDataAvailable: price > 0 && (liquidity > 0 || volume24h > 0)
       };

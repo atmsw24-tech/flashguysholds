@@ -389,7 +389,8 @@ function normalizeRobinhoodPayload(payload) {
     volume24h: Number(token.volume24h ?? token.volume?.h24 ?? 0),
     change24h: Number(token.change24h ?? token.priceChange?.h24 ?? 0),
     createdAt: token.createdAt || token.pairCreatedAt || token.timestamp || Date.now(),
-    logo: token.logo || token.image || token.info?.imageUrl || null
+    logo: token.logo || token.image || token.imageUrl || token.image_uri || token.imageUri || token.icon || token.icon_url || token.info?.imageUrl || null,
+    image: token.image || token.logo || token.imageUrl || token.image_uri || token.imageUri || token.icon || token.icon_url || token.info?.imageUrl || null
   })).filter((token) => token.address);
 }
 
@@ -538,8 +539,8 @@ function toMarketToken(profile, pair, chain) {
     pairUrl: pair.url || profile.url || null,
     // Prefer the live pair's image, then the token profile icon. Some newly
     // launched tokens only have an image URI in their launch metadata.
-    logo: pair.info?.imageUrl || profile.icon || profile.image || null,
-    image: pair.info?.imageUrl || profile.icon || profile.image || null,
+    logo: pair.info?.imageUrl || pair.baseToken?.image_url || profile.icon || profile.image || profile.imageUrl || profile.icon_url || null,
+    image: pair.info?.imageUrl || pair.baseToken?.image_url || profile.icon || profile.image || profile.imageUrl || profile.icon_url || null,
     description: profile.description || pair.info?.description || null,
     website: (pair.info?.websites || profile.links || []).find((link) => String(link.type || "").toLowerCase() === "website" || link.url)?.url || null,
     socials: (pair.info?.socials || profile.links || []).map((link) => ({ type: link.type || link.platform || link.label || "link", url: link.url || (link.handle ? `https://${String(link.platform || link.type || "").toLowerCase()}.com/${link.handle.replace(/^@/, "")}` : null) })).filter((link) => link.url),

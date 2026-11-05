@@ -12,6 +12,10 @@ export const ROBINHOOD_MAINNET = {
 
 export const PONS_V2_FACTORY = "0x7eD598BcEf8bd9Edd8C97A195C6d13f40801EC7e";
 
+// Mainnet launch stays disabled until the Pons V2 factory, hook, escrow, splitter,
+// and holder-claim flow have passed independent ABI review and end-to-end testing.
+export const PONS_MAINNET_LAUNCH_ENABLED = false;
+
 const FACTORY_ABI = [
   "function launchConfigCount() view returns (uint256)",
   "function getLaunchConfig(uint256) view returns (tuple(uint256 supply,uint256 curveFeeBps,uint256 phantomQuote,uint256 graduationThreshold,uint24 poolFee,int24 tickSpacing,bool enabled))",
@@ -105,6 +109,9 @@ export async function launchOnPons({
   ethereum, name, symbol, description, logo,
   website, twitter, telegram, launchConfigId = 0, onStatus,
 }) {
+  if (!PONS_MAINNET_LAUNCH_ENABLED) {
+    throw new Error("FLASHBOYS Robinhood Chain mainnet launches are temporarily disabled while the Pons V2 contract interfaces, fee splitter, and holder-reward claims are independently audited and tested. No transaction was sent.");
+  }
   if (!ethereum?.request) throw new Error("Install Robinhood Wallet or MetaMask first.");
   if (!String(name || "").trim() || !String(symbol || "").trim()) throw new Error("Token name and ticker are required.");
   await switchToRobinhoodMainnet(ethereum);

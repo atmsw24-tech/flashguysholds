@@ -5,6 +5,9 @@ const contracts = [
   { sourcePath: "../contracts/RobinhoodFixedSupplyToken.sol", sourceName: "RobinhoodFixedSupplyToken.sol", contractName: "RobinhoodFixedSupplyToken" },
   { sourcePath: "../contracts/FlashboysHolderRewardsVault.sol", sourceName: "FlashboysHolderRewardsVault.sol", contractName: "FlashboysHolderRewardsVault" },
   { sourcePath: "../contracts/FlashboysFeeRouter.sol", sourceName: "FlashboysFeeRouter.sol", contractName: "FlashboysFeeRouter" },
+  { sourcePath: "../contracts/FlashboysBondingCurve.sol", sourceName: "FlashboysBondingCurve.sol", contractName: "FlashboysBondingCurve" },
+  { sourcePath: "../contracts/FlashboysPostGraduationFeeCollector.sol", sourceName: "FlashboysPostGraduationFeeCollector.sol", contractName: "FlashboysPostGraduationFeeCollector" },
+  { sourcePath: "../contracts/FlashboysFactory.sol", sourceName: "FlashboysFactory.sol", contractName: "FlashboysFactory" },
   { sourcePath: "../contracts/RobinhoodCreatorFeeSplitter.sol", sourceName: "RobinhoodCreatorFeeSplitter.sol", contractName: "FlashboysPonsFeeSplitter" },
 ];
 const sources = Object.fromEntries(contracts.map(({ sourcePath, sourceName }) => [

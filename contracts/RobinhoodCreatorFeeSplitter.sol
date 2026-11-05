@@ -1,38 +1,41 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.26;
 
-/// @title RobinhoodCreatorFeeSplitter
-/// @notice Splits fees that have ALREADY been routed to the creator side of a
-///         Pons-compatible fee source. It does not collect pool fees or change
-///         the upstream creator/protocol split.
-/// @dev Default allocation of the creator-side proceeds: 80% creator / 20%
-///      holder-rewards vault. If the upstream source uses Pons' current 70/30
-///      split, the resulting total-fee allocation is 56% creator, 14% holders,
-///      and 30% protocol. The holder vault is a separate, trusted contract.
-contract RobinhoodCreatorFeeSplitter {
+import "./FlashboysHolderRewardsVault.sol";
+
+interface IPonsCreatorFeeEscrow {
+    function claim() external returns (uint256 amount);
+    function claimToken(address token) external returns (uint256 amount);
+    function balanceOf(address recipient) external view returns (uint256);
+    function balanceOfToken(address recipient, address token) external view returns (uint256);
+}
+
+/// @title FlashboysPonsFeeSplitter
+/// @notice Pons V2 creator-fee recipient. It claims the creator's accumulated
+///         Pons escrow balance, pays 80% to the creator, and deposits 20% into
+///         a dedicated holder-rewards vault. The upstream Pons protocol share
+///         is untouched because this contract only claims the creator ledger.
+contract FlashboysPonsFeeSplitter {
     uint256 public constant CREATOR_BPS = 8_000;
     uint256 public constant HOLDER_REWARDS_BPS = 2_000;
-    uint256 private constant BPS_DENOMINATOR = 10_000;
+    uint256 private constant BPS = 10_000;
 
     address public immutable creator;
-    address public immutable holderRewardsVault;
-
+    FlashboysHolderRewardsVault public immutable holderRewardsVault;
     uint256 private entered;
 
-    event NativeFeesDistributed(uint256 total, uint256 creatorAmount, uint256 holderRewardsAmount);
-    event TokenFeesDistributed(address indexed token, uint256 total, uint256 creatorAmount, uint256 holderRewardsAmount);
+    event PonsNativeFeesClaimed(uint256 claimed, uint256 creatorAmount, uint256 holderAmount);
+    event PonsTokenFeesClaimed(address indexed asset, uint256 claimed, uint256 creatorAmount, uint256 holderAmount);
 
     error ZeroAddress();
-    error InvalidVault();
     error ReentrantCall();
-    error NativeTransferFailed();
-    error TokenTransferFailed();
+    error TransferFailed();
+    error NothingClaimable();
 
-    constructor(address creator_, address holderRewardsVault_) {
-        if (creator_ == address(0) || holderRewardsVault_ == address(0)) revert ZeroAddress();
-        if (creator_ == holderRewardsVault_) revert InvalidVault();
+    constructor(address creator_) {
+        if (creator_ == address(0)) revert ZeroAddress();
         creator = creator_;
-        holderRewardsVault = holderRewardsVault_;
+        holderRewardsVault = new FlashboysHolderRewardsVault(creator_);
     }
 
     modifier nonReentrant() {
@@ -42,50 +45,45 @@ contract RobinhoodCreatorFeeSplitter {
         entered = 0;
     }
 
-    /// @notice Allows a fee source or automation to send native ETH here.
-    receive() external payable {}
-
-    /// @notice Distributes all native ETH currently held by this splitter.
-    ///         Anyone may call; proceeds always go to the immutable recipients.
-    function distributeNative() external nonReentrant {
-        uint256 total = address(this).balance;
-        if (total == 0) return;
-
-        uint256 creatorAmount = (total * CREATOR_BPS) / BPS_DENOMINATOR;
+    /// @notice Claim this address's Pons native-asset creator fees and split them.
+    /// Anyone can trigger the claim; funds always go to immutable recipients.
+    function claimAndDistributeNative(address escrow) external nonReentrant {
+        if (escrow == address(0)) revert ZeroAddress();
+        uint256 beforeBalance = address(this).balance;
+        IPonsCreatorFeeEscrow(escrow).claim();
+        uint256 total = address(this).balance - beforeBalance;
+        if (total == 0) revert NothingClaimable();
+        uint256 creatorAmount = (total * CREATOR_BPS) / BPS;
         uint256 holderAmount = total - creatorAmount;
-
         (bool creatorOk,) = payable(creator).call{value: creatorAmount}("");
-        if (!creatorOk) revert NativeTransferFailed();
-        (bool holderOk,) = payable(holderRewardsVault).call{value: holderAmount}("");
-        if (!holderOk) revert NativeTransferFailed();
-
-        emit NativeFeesDistributed(total, creatorAmount, holderAmount);
+        if (!creatorOk) revert TransferFailed();
+        (bool holderOk,) = payable(address(holderRewardsVault)).call{value: holderAmount}("");
+        if (!holderOk) revert TransferFailed();
+        emit PonsNativeFeesClaimed(total, creatorAmount, holderAmount);
     }
 
-    /// @notice Distributes all of an ERC-20 fee asset currently held here.
-    ///         Supports WETH and fee tokens; recipients are immutable.
-    function distributeToken(address token) external nonReentrant {
-        if (token == address(0)) revert ZeroAddress();
-        (bool balanceOk, bytes memory balanceData) = token.staticcall(
-            abi.encodeWithSignature("balanceOf(address)", address(this))
-        );
-        if (!balanceOk || balanceData.length < 32) revert TokenTransferFailed();
-        uint256 total = abi.decode(balanceData, (uint256));
-        if (total == 0) return;
-
-        uint256 creatorAmount = (total * CREATOR_BPS) / BPS_DENOMINATOR;
+    /// @notice Claim this address's Pons ERC-20 creator fees and split them.
+    function claimAndDistributeToken(address escrow, address asset) external nonReentrant {
+        if (escrow == address(0) || asset == address(0)) revert ZeroAddress();
+        uint256 beforeBalance = _balance(asset);
+        IPonsCreatorFeeEscrow(escrow).claimToken(asset);
+        uint256 total = _balance(asset) - beforeBalance;
+        if (total == 0) revert NothingClaimable();
+        uint256 creatorAmount = (total * CREATOR_BPS) / BPS;
         uint256 holderAmount = total - creatorAmount;
-
-        _safeTransfer(token, creator, creatorAmount);
-        _safeTransfer(token, holderRewardsVault, holderAmount);
-
-        emit TokenFeesDistributed(token, total, creatorAmount, holderAmount);
+        _safeTransfer(asset, creator, creatorAmount);
+        _safeTransfer(asset, address(holderRewardsVault), holderAmount);
+        emit PonsTokenFeesClaimed(asset, total, creatorAmount, holderAmount);
     }
 
-    function _safeTransfer(address token, address recipient, uint256 amount) private {
-        (bool ok, bytes memory data) = token.call(
-            abi.encodeWithSignature("transfer(address,uint256)", recipient, amount)
-        );
-        if (!ok || (data.length != 0 && !abi.decode(data, (bool)))) revert TokenTransferFailed();
+    function _balance(address asset) private view returns (uint256 amount) {
+        (bool ok, bytes memory data) = asset.staticcall(abi.encodeWithSignature("balanceOf(address)", address(this)));
+        if (!ok || data.length < 32) revert TransferFailed();
+        amount = abi.decode(data, (uint256));
+    }
+
+    function _safeTransfer(address asset, address recipient, uint256 amount) private {
+        (bool ok, bytes memory data) = asset.call(abi.encodeWithSignature("transfer(address,uint256)", recipient, amount));
+        if (!ok || (data.length != 0 && !abi.decode(data, (bool)))) revert TransferFailed();
     }
 }

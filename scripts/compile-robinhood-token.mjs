@@ -19,6 +19,9 @@ const input = {
   sources,
   settings: {
     optimizer: { enabled: true, runs: 200 },
+    // The launch factory creates several contracts and exceeds the legacy
+    // code generator stack limit. viaIR resolves this without changing logic.
+    viaIR: true,
     outputSelection: { "*": { "*": ["abi", "evm.bytecode.object"] } },
   },
 };

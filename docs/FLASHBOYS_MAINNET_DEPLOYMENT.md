@@ -49,7 +49,7 @@ export VITE_FLASHBOYS_FACTORY_ADDRESS=0xYOUR_FACTORY_ADDRESS
 npm run verify:flashboys
 ```
 
-The verifier checks the chain, deployed factory/router/adapter/vault, creator, 70/30 constants, adapter fee-collector authorization, and Uniswap V3 position-manager/WETH bytecode.
+The verifier checks the chain, deployed factory/router/adapter/vault, creator, 60/40 constants, adapter fee-collector authorization, and Uniswap V3 position-manager/WETH bytecode.
 
 ## What this verification does not prove
 

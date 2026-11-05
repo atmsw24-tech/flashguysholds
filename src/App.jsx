@@ -879,8 +879,8 @@ function HolderRewardsPage() {
       <div className="rewards-hero">
         <div className="rewards-kicker">⚡ FLASHGUYS REWARDS ARENA</div>
         <h1>Hold. Compete. <span>Earn a share.</span></h1>
-        <p>FLASHBOYS' independent Robinhood Chain fee design allocates 70% of collected trading fees to the creator and 30% to the holder rewards vault. Holder rewards depend on actual fees, eligibility rules, funded epochs, and on-chain claims; they are not guaranteed.</p>
-        <div className="rewards-status-row"><span className="rewards-status-pill">FEE SPLIT: 70% / 30%</span><span className="rewards-status-pill rewards-status-muted">LIVE PAYOUTS: NOT ENABLED</span></div>
+        <p>FLASHBOYS' independent Robinhood Chain fee design allocates 60% of collected trading fees to the creator and 40% to the holder rewards vault. Holder rewards depend on actual fees, eligibility rules, funded epochs, and on-chain claims; they are not guaranteed.</p>
+        <div className="rewards-status-row"><span className="rewards-status-pill">FEE SPLIT: 60% / 40%</span><span className="rewards-status-pill rewards-status-muted">LIVE PAYOUTS: NOT ENABLED</span></div>
       </div>
       <div className="rewards-metric-grid">
         <div className="rewards-metric"><span>Holder fee allocation</span><strong>30%</strong><small>Of collected eligible trading fees</small></div>

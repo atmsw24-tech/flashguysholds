@@ -67,3 +67,37 @@ The script builds proofs only; it does not fetch holder balances, define eligibi
 - The holder vault publisher is the creator wallet. A published epoch root cannot be replaced. Each root now requires a funded allocation; overlapping epochs cannot reserve the same funds twice. Unclaimed allocation remains reserved because there is no expiry/recovery path yet.
 - Holder rewards are not automatic until a trusted holder-balance indexer and snapshot policy are connected. No rewards or balances should be displayed as earned before on-chain funding and claims are verified.
 - This code has not been audited. Do not treat it as production-safe until independent Solidity review, testnet simulation, and mainnet deployment verification are complete.
+
+
+## Time-weighted holder snapshot generator (Robinhood Chain)
+
+A new RPC snapshot command reconstructs token balances from the token's complete ERC-20
+`Transfer` event history and weights each holder by balance × blocks held during the
+selected reward epoch. This avoids a single-block snapshot being the only measure of
+participation.
+
+Run it with a trusted Robinhood Chain mainnet RPC endpoint:
+
+```bash
+ROBINHOOD_RPC_URL=https://rpc.mainnet.chain.robinhood.com npm run holder:snapshot -- <token-address> <deployment-block> <epoch-start-block> <epoch-end-block> <reward-budget-ETH>
+```
+
+The script verifies chain ID 4663, indexes logs in bounded block ranges, reconstructs
+balances from the deployment block, and writes `holder-snapshot-<start>-<end>.json`.
+The output is directly compatible with the Merkle builder:
+
+```bash
+npm run holder:merkle -- holder-snapshot-<start>-<end>.json <epoch-number>
+```
+
+Important limitations:
+- The RPC must provide complete historical logs from the deployment block. A pruned,
+  rate-limited, or incomplete endpoint can make the snapshot fail or be incomplete.
+- This first version weights by block count, not wall-clock seconds.
+- It includes every non-zero holder; it does not yet exclude LPs, burn addresses,
+  team wallets, contracts, or known exchange wallets. Review the eligibility policy
+  before funding and publishing any epoch.
+- The command is operator-run. It is not yet an automatic scheduled indexer and
+  does not publish roots or move funds.
+- Independently verify the snapshot against a second RPC/indexer before any mainnet
+  reward distribution. Contract review and end-to-end testing are still required.

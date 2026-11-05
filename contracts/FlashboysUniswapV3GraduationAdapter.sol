@@ -81,7 +81,7 @@ interface IERC721ReceiverFlashboys {
 ///         routed through the independent FLASHBOYS 70/30 fee router.
 contract FlashboysUniswapV3GraduationAdapter is IERC721ReceiverFlashboys {
     address public constant POSITION_MANAGER = 0x73991a25C818Bf1f1128dEAaB1492D45638DE0D3;
-    address public constant WETH = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
+    address public constant WETH = 0x0bd7d308f8e1639fab988df18a8011f41eacad73;
     uint24 public constant POOL_FEE = 10_000; // 1%
     int24 public constant MIN_TICK = -887200;
     int24 public constant MAX_TICK = 887200;

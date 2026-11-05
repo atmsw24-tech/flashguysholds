@@ -1,4 +1,4 @@
-import { BrowserProvider, Contract, ZeroAddress, parseEther } from "ethers";
+import { BrowserProvider, Contract, ZeroAddress, getAddress, parseEther } from "ethers";
 
 export const ROBINHOOD_CHAIN = {
   chainId: 4663,
@@ -109,7 +109,7 @@ export async function launchOnFlashboysFactory({ ethereum, walletAddress, name, 
   };
 }
 
-export async function publishFlashboysHolderRewardsRoot({ ethereum, holderVault, epoch, root, totalAllocationEth }) {
+export async function publishFlashboysHolderRewardsRoot({ ethereum, holderVault, epoch, root, totalAllocationEth, asset = ZERO }) {
   if (!/^0x[a-fA-F0-9]{64}$/.test(String(root || ""))) throw new Error("Enter a valid 32-byte Merkle root.");
   const epochNumber = Number(epoch);
   if (!Number.isSafeInteger(epochNumber) || epochNumber < 1) throw new Error("Reward epoch must be a positive whole number.");
@@ -118,12 +118,12 @@ export async function publishFlashboysHolderRewardsRoot({ ethereum, holderVault,
   await switchToRobinhood(ethereum);
   const signer = await new BrowserProvider(ethereum).getSigner();
   const vault = new Contract(holderVault, VAULT_ABI, signer);
-  const tx = await vault.publishRoot(epochNumber, ZERO, root, allocation);
+  const tx = await vault.publishRoot(epochNumber, getAddress(asset), root, allocation);
   const receipt = await tx.wait();
   return { transactionHash: receipt.hash };
 }
 
-export async function claimFlashboysHolderReward({ ethereum, holderVault, epoch, amountEth, proof }) {
+export async function claimFlashboysHolderReward({ ethereum, holderVault, epoch, amountEth, proof, asset = ZERO }) {
   const proofItems = typeof proof === "string" ? JSON.parse(proof) : proof;
   if (!Array.isArray(proofItems) || proofItems.some((item) => !/^0x[a-fA-F0-9]{64}$/.test(String(item)))) {
     throw new Error("Merkle proof must be a JSON array of 32-byte hex hashes.");
@@ -135,7 +135,7 @@ export async function claimFlashboysHolderReward({ ethereum, holderVault, epoch,
   await switchToRobinhood(ethereum);
   const signer = await new BrowserProvider(ethereum).getSigner();
   const vault = new Contract(holderVault, VAULT_ABI, signer);
-  const tx = await vault.claim(epochNumber, ZERO, amount, proofItems);
+  const tx = await vault.claim(epochNumber, getAddress(asset), amount, proofItems);
   const receipt = await tx.wait();
   return { transactionHash: receipt.hash };
 }

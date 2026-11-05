@@ -6,11 +6,11 @@ import "./FlashboysHolderRewardsVault.sol";
 /// @title FlashboysFeeRouter
 /// @notice Independent FLASHBOYS fee router. It has no Pons interfaces or
 ///         escrow dependency. Authorized FLASHBOYS curve/pool contracts send
-///         collected trading fees here; 70% is paid to the creator and 30% is
+///         collected trading fees here; 60% is paid to the creator and 40% is
 ///         reserved in the holder rewards vault.
 contract FlashboysFeeRouter {
-    uint256 public constant CREATOR_BPS = 7_000;
-    uint256 public constant HOLDER_REWARDS_BPS = 3_000;
+    uint256 public constant CREATOR_BPS = 6_000;
+    uint256 public constant HOLDER_REWARDS_BPS = 4_000;
     uint256 private constant BPS = 10_000;
 
     address public immutable creator;

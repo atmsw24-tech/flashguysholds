@@ -128,8 +128,6 @@ export async function launchOnPons({
   const hook = new Contract(hookAddress, HOOK_ABI, provider);
   const policy = await hook.currentFeePolicy();
   const protocolShare = Number(policy.protocolFeeShareBps);
-  const buybackShare = Number(policy.buybackBurnBps);
-  if (buybackShare !== 0) throw new Error("Pons currently has a buyback allocation enabled in its fee policy. FLASHBOYS is configured for the clean creator/protocol split; refusing to launch under different economics.");
   const economics = await factory.previewLaunchEconomics(configId, ZeroAddress);
 
   onStatus?.("Deploying the FLASHBOYS creator-fee splitter and holder-rewards vault. Confirm the contract deployment in your wallet.");

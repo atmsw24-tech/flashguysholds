@@ -219,3 +219,31 @@ export async function claimPonsCreatorFees({ ethereum, splitterAddress, feeEscro
   const receipt = await tx.wait();
   return { transactionHash: receipt.hash, amountWei: nativeBalance.toString() };
 }
+
+export async function publishPonsHolderRewardsRoot({ ethereum, holderVault, epoch, root }) {
+  if (!ethereum?.request) throw new Error("Connect the creator wallet first.");
+  await switchToRobinhoodMainnet(ethereum);
+  if (!/^0x[a-fA-F0-9]{64}$/.test(String(root || ""))) throw new Error("Enter a valid 32-byte Merkle root.");
+  const provider = new BrowserProvider(ethereum);
+  const signer = await provider.getSigner();
+  const vault = new Contract(holderVault, ["function publishRoot(uint256 epoch,address asset,bytes32 root)"], signer);
+  const tx = await vault.publishRoot(BigInt(epoch), ZeroAddress, root);
+  const receipt = await tx.wait();
+  return { transactionHash: receipt.hash };
+}
+
+export async function claimPonsHolderReward({ ethereum, holderVault, epoch, amountEth, proof }) {
+  if (!ethereum?.request) throw new Error("Connect a Robinhood Chain wallet first.");
+  await switchToRobinhoodMainnet(ethereum);
+  const proofItems = typeof proof === "string" ? JSON.parse(proof) : proof;
+  if (!Array.isArray(proofItems) || proofItems.some((item) => !/^0x[a-fA-F0-9]{64}$/.test(String(item)))) {
+    throw new Error("Merkle proof must be a JSON array of 32-byte hex hashes.");
+  }
+  const { parseEther } = await import("ethers");
+  const provider = new BrowserProvider(ethereum);
+  const signer = await provider.getSigner();
+  const vault = new Contract(holderVault, ["function claim(uint256 epoch,address asset,uint256 amount,bytes32[] proof)"], signer);
+  const tx = await vault.claim(BigInt(epoch), ZeroAddress, parseEther(String(amountEth)), proofItems);
+  const receipt = await tx.wait();
+  return { transactionHash: receipt.hash };
+}

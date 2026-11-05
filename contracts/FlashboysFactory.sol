@@ -63,7 +63,7 @@ contract FlashboysFactory {
         string calldata name_,
         string calldata symbol_
     ) external onlyCreator returns (address tokenAddress, address curveAddress, address collectorAddress) {
-        if (bytes(name_).length == 0 || bytes(symbol_).length == 0) revert InvalidParameters();
+        if (bytes(name_).length == 0 || bytes(symbol_).length == 0 || graduationAdapter == address(0)) revert InvalidParameters();
 
         RobinhoodFixedSupplyToken token = new RobinhoodFixedSupplyToken(name_, symbol_);
         FlashboysPostGraduationFeeCollector collector =

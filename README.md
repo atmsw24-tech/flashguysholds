@@ -97,6 +97,27 @@ Indexer:
 
 Node.js worker
 
+## Cloudflare Pages frontend deployment
+
+The Vite frontend can be hosted on **Cloudflare Pages** while the existing API remains on Vercel during the migration. This is a staged migration, not a full backend migration.
+
+Create a **Pages** project connected to this GitHub repository (do not create a Workers-only service for this frontend), using:
+
+- Production branch: `main`
+- Root directory: `/`
+- Build command: `npm run build`
+- Build output directory: `dist`
+
+Add these variables under the Cloudflare Pages project's **Settings → Environment variables** for both Production and Preview builds:
+
+- `VITE_API_BASE_URL` = `https://flashguysholds-5g8r.vercel.app/api` (keeps API calls on the existing Vercel backend until those endpoints are migrated)
+- `VITE_SUPABASE_URL` = the existing Supabase project URL
+- `VITE_SUPABASE_ANON_KEY` = the existing Supabase publishable/anon key
+
+These are public frontend configuration values. Never add a Supabase service-role key, database password, wallet private key, or seed phrase as a `VITE_*` variable.
+
+After deployment, test account sign-in, token discovery, charts, search, wallet connection, and launchpad screens on the Cloudflare Pages URL. Keep the current Vercel production site and API available until those checks pass. The current `api/` handlers are Vercel serverless functions; this frontend configuration does **not** migrate them to Cloudflare.
+
 ## Security
 
 Private keys and seed phrases must never be placed in the frontend.

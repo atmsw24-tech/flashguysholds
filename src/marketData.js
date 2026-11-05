@@ -1,5 +1,4 @@
-const API_BASE =
-  import.meta.env.VITE_API_BASE_URL || "/api";
+import { apiUrl } from "./apiBase";
 
 function normalizeToken(token) {
   const chain =
@@ -74,7 +73,7 @@ function normalizeToken(token) {
 
 export async function fetchGMGNTokens(chain = "all") {
   const response = await fetch(
-    `${API_BASE}/tokens?chain=${encodeURIComponent(chain)}`,
+    apiUrl(`tokens?chain=${encodeURIComponent(chain)}`),
     {
       headers: {
         Accept: "application/json",

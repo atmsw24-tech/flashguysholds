@@ -1,5 +1,6 @@
 
 import { useEffect, useState } from "react";
+import { apiUrl } from "../apiBase";
 
 export default function TokenChart({ address }) {
   const [points, setPoints] = useState([]);
@@ -13,7 +14,7 @@ export default function TokenChart({ address }) {
     async function load() {
       try {
         const response = await fetch(
-          `/api/chart?address=${encodeURIComponent(address)}`
+          apiUrl(`chart?address=${encodeURIComponent(address)}`)
         );
 
         const data = await response.json();

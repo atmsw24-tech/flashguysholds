@@ -52,7 +52,8 @@ const outputClaims = claims.map((claim, originalIndex) => {
   }
   return { address: claim.address, amountWei: claim.amountWei, amountEth: claim.amountEth, proof };
 });
-const output = { epoch: epoch.toString(), asset: "native ETH", root, totalWei: claims.reduce((sum, claim) => sum + BigInt(claim.amountWei), 0n).toString(), holderCount: claims.length, claims: outputClaims };
+const totalWei = claims.reduce((sum, claim) => sum + BigInt(claim.amountWei), 0n);
+const output = { epoch: epoch.toString(), asset: "native ETH", root, totalWei: totalWei.toString(), totalEth: formatEther(totalWei), holderCount: claims.length, claims: outputClaims };
 const outputPath = path.resolve(process.cwd(), `holder-rewards-epoch-${epoch}.json`);
 fs.writeFileSync(outputPath, JSON.stringify(output, null, 2) + "\n");
 console.log(JSON.stringify({ epoch: output.epoch, root, totalWei: output.totalWei, holderCount: output.holderCount, outputPath }, null, 2));

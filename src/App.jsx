@@ -883,8 +883,8 @@ function HolderRewardsPage() {
         <div className="rewards-status-row"><span className="rewards-status-pill">FEE SPLIT: 60% / 40%</span><span className="rewards-status-pill rewards-status-muted">LIVE PAYOUTS: NOT ENABLED</span></div>
       </div>
       <div className="rewards-metric-grid">
-        <div className="rewards-metric"><span>Holder fee allocation</span><strong>30%</strong><small>Of collected eligible trading fees</small></div>
-        <div className="rewards-metric"><span>Creator fee allocation</span><strong>70%</strong><small>Paid to the token creator</small></div>
+        <div className="rewards-metric"><span>Holder fee allocation</span><strong>40%</strong><small>Of collected eligible trading fees</small></div>
+        <div className="rewards-metric"><span>Creator fee allocation</span><strong>60%</strong><small>Paid to the token creator</small></div>
         <div className="rewards-metric"><span>Current reward pool</span><strong>Not available</strong><small>Live on-chain fee data is not connected</small></div>
       </div>
       <div className="rewards-panel">
@@ -896,17 +896,17 @@ function HolderRewardsPage() {
         </div>
         {competitionTab === "payouts" ? <div className="rewards-payout-content">
           <div className="rewards-split-grid">
-            <div className="rewards-split-card creator"><span>CREATOR</span><strong>70%</strong><small>Creator wallet allocation</small></div>
-            <div className="rewards-split-card holders"><span>HOLDER REWARDS</span><strong>30%</strong><small>Reserved for eligible holders</small></div>
+            <div className="rewards-split-card creator"><span>CREATOR</span><strong>60%</strong><small>Creator wallet allocation</small></div>
+            <div className="rewards-split-card holders"><span>HOLDER REWARDS</span><strong>40%</strong><small>Reserved for eligible holders</small></div>
           </div>
-          <div className="rewards-split-track" role="img" aria-label="70 percent creator allocation and 30 percent holder rewards allocation"><span className="creator-share"></span><span className="holder-share"></span></div>
+          <div className="rewards-split-track" role="img" aria-label="60 percent creator allocation and 40 percent holder rewards allocation"><span className="creator-share"></span><span className="holder-share"></span></div>
           <div className="rewards-example">
-            <div><span>Illustrative example · if $100 in fees is collected</span><strong>$70 creator</strong><strong>$30 holder vault</strong></div>
+            <div><span>Illustrative example · if $100 in fees is collected</span><strong>$60 creator</strong><strong>$40 holder vault</strong></div>
             <small>This is an example of the programmed split, not a report of fees earned or funds currently available.</small>
           </div>
           <div className="rewards-flow">
             <div><b>01</b><strong>Trading fee collected</strong><small>An authorized FLASHBOYS curve or fee collector sends the fee to the router.</small></div>
-            <div><b>02</b><strong>70 / 30 split</strong><small>The router sends 70% to the creator and 30% to the holder rewards vault.</small></div>
+            <div><b>02</b><strong>60 / 40 split</strong><small>The router sends 70% to the creator and 30% to the holder rewards vault.</small></div>
             <div><b>03</b><strong>Holder claims</strong><small>A funded reward epoch and verified Merkle proof are required before a holder can claim.</small></div>
           </div>
           <div className="rewards-notice">Implementation status: the independent fee-router and holder-vault contracts are in the codebase. They have not been verified as deployed and tested on Robinhood Chain mainnet. The rewards pool, fee totals, and claims remain unavailable until deployment, fee-source integration, holder snapshots, and end-to-end tests are complete. No live earnings are being claimed here.</div>

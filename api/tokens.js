@@ -262,6 +262,13 @@ function mergeTokenLists(...lists) {
       gmgnRank24h: token.gmgnRank24h ?? old.gmgnRank24h ?? null,
       gmgnRank1h: token.gmgnRank1h ?? old.gmgnRank1h ?? null,
       gmgnSource: token.gmgnSource || old.gmgnSource || null,
+      // Preserve provider ranking metadata when a trending-pool record is
+      // merged with a cached/new-pool record for the same contract.
+      geckoTrendingSource: token.geckoTrendingSource || old.geckoTrendingSource || null,
+      geckoTrendingDuration: token.geckoTrendingDuration || old.geckoTrendingDuration || null,
+      geckoTrendingRank: Number(token.geckoTrendingRank) > 0
+        ? Number(token.geckoTrendingRank)
+        : Number(old.geckoTrendingRank) > 0 ? Number(old.geckoTrendingRank) : null,
       volume24h: Math.max(Number(token.volume24h || 0), Number(old.volume24h || 0)),
       volume1h: Math.max(Number(token.volume1h || 0), Number(old.volume1h || 0)),
       marketDataAvailable: token.marketDataAvailable === false && Number(old.liquidity || 0) > 0

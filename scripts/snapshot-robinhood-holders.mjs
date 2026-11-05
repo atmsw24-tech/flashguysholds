@@ -15,6 +15,16 @@ const deploymentBlock = Number(deploymentBlockArg);
 const startBlock = Number(startBlockArg);
 const endBlock = Number(endBlockArg);
 const rewardBudget = parseEther(rewardEthArg);
+const excludedAddresses = new Set(
+  String(process.env.HOLDER_EXCLUDE_ADDRESSES || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map((value) => getAddress(value).toLowerCase()),
+);
+if (excludedAddresses.size === 0) {
+  throw new Error("Set HOLDER_EXCLUDE_ADDRESSES to the curve, Uniswap pool, adapter, factory, fee router, and rewards vault addresses before generating a production snapshot.");
+}
 for (const [label, value] of [["deploymentBlock", deploymentBlock], ["startBlock", startBlock], ["endBlock", endBlock]]) {
   if (!Number.isSafeInteger(value) || value < 0) throw new Error(label + " must be a non-negative safe integer.");
 }
@@ -86,7 +96,7 @@ while (cursor <= endBlock) {
 const finalAccrualStart = Math.max(nextAccrualBlock, startBlock);
 if (endBlock + 1 > finalAccrualStart) accrue(endBlock + 1 - finalAccrualStart);
 
-const weighted = [...weightedBalances.entries()].filter(([, weight]) => weight > 0n);
+const weighted = [...weightedBalances.entries()].filter(([address, weight]) => weight > 0n && !excludedAddresses.has(address.toLowerCase()));
 const totalWeight = weighted.reduce((sum, [, weight]) => sum + weight, 0n);
 if (totalWeight === 0n) throw new Error("No eligible token-holder balance was found during the selected epoch.");
 const allocations = weighted.map(([address, weight]) => ({
@@ -118,7 +128,8 @@ const output = {
     startTimestamp: new Date(start.timestamp * 1000).toISOString(),
     endTimestamp: new Date(end.timestamp * 1000).toISOString(),
     source: "Robinhood Chain RPC Transfer-event reconstruction",
-    eligibilityPolicy: "All non-zero holders weighted by balance multiplied by blocks held during the epoch; no address exclusions.",
+    eligibilityPolicy: "Non-zero wallet balances weighted by balance multiplied by blocks held during the epoch; excluded protocol addresses supplied through HOLDER_EXCLUDE_ADDRESSES.",
+    excludedAddresses: [...excludedAddresses],
     tokenDecimals: decimals,
     transferEventsIndexed: totalLogs,
     totalWeightedTokenBlocks: totalWeight.toString(),

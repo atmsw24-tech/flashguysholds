@@ -17,6 +17,8 @@ const FACTORY_ABI = [
   "function getLaunchConfig(uint256) view returns (tuple(uint256 supply,uint256 curveFeeBps,uint256 phantomQuote,uint256 graduationThreshold,uint24 poolFee,int24 tickSpacing,bool enabled))",
   "function launchFee() view returns (uint256)",
   "function launchEnabled() view returns (bool)",
+  "function snipeTaxStartBps() view returns (uint256)",
+  "function snipeTaxSeconds() view returns (uint256)",
   "function canLaunch(address) view returns (bool)",
   "function memeHook() view returns (address)",
   "function feeEscrow() view returns (address)",
@@ -58,12 +60,14 @@ export async function readPonsLaunchOptions(ethereum) {
   if (!ethereum?.request) throw new Error("Connect an EVM wallet to inspect Pons launch settings.");
   const provider = new BrowserProvider(ethereum);
   const factory = new Contract(PONS_V2_FACTORY, FACTORY_ABI, provider);
-  const [count, launchFee, launchEnabled, hookAddress, feeEscrow] = await Promise.all([
+  const [count, launchFee, launchEnabled, hookAddress, feeEscrow, snipeTaxStartBps, snipeTaxSeconds] = await Promise.all([
     factory.launchConfigCount(),
     factory.launchFee(),
     factory.launchEnabled(),
     factory.memeHook(),
     factory.feeEscrow(),
+    factory.snipeTaxStartBps(),
+    factory.snipeTaxSeconds(),
   ]);
   const configs = await Promise.all(
     Array.from({ length: Number(count) }, (_, index) => factory.getLaunchConfig(index))
@@ -91,6 +95,8 @@ export async function readPonsLaunchOptions(ethereum) {
     protocolFeeShareBps: Number(policy.protocolFeeShareBps),
     buybackBurnBps: Number(policy.buybackBurnBps),
     hookFeeBps: Number(policy.hookFeeBps),
+    snipeTaxStartBps: Number(snipeTaxStartBps),
+    snipeTaxSeconds: Number(snipeTaxSeconds),
     configs: enabledConfigs,
   };
 }

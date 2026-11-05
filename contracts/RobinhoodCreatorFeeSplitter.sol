@@ -38,6 +38,8 @@ contract FlashboysPonsFeeSplitter {
         holderRewardsVault = new FlashboysHolderRewardsVault(creator_);
     }
 
+    receive() external payable {}
+
     modifier nonReentrant() {
         if (entered != 0) revert ReentrantCall();
         entered = 1;

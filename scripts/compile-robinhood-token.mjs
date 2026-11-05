@@ -3,7 +3,8 @@ import solc from "solc";
 
 const contracts = [
   { sourcePath: "../contracts/RobinhoodFixedSupplyToken.sol", sourceName: "RobinhoodFixedSupplyToken.sol", contractName: "RobinhoodFixedSupplyToken" },
-  { sourcePath: "../contracts/RobinhoodCreatorFeeSplitter.sol", sourceName: "RobinhoodCreatorFeeSplitter.sol", contractName: "RobinhoodCreatorFeeSplitter" },
+  { sourcePath: "../contracts/FlashboysHolderRewardsVault.sol", sourceName: "FlashboysHolderRewardsVault.sol", contractName: "FlashboysHolderRewardsVault" },
+  { sourcePath: "../contracts/RobinhoodCreatorFeeSplitter.sol", sourceName: "RobinhoodCreatorFeeSplitter.sol", contractName: "FlashboysPonsFeeSplitter" },
 ];
 const sources = Object.fromEntries(contracts.map(({ sourcePath, sourceName }) => [
   sourceName,

@@ -15,6 +15,7 @@ contract FlashboysFeeRouter {
 
     address public immutable creator;
     FlashboysHolderRewardsVault public immutable holderRewardsVault;
+    address public immutable factory;
     mapping(address => bool) public feeCollector;
     uint256 private entered;
 
@@ -28,14 +29,15 @@ contract FlashboysFeeRouter {
     error TransferFailed();
     error InvalidAmount();
 
-    constructor(address creator_) {
-        if (creator_ == address(0)) revert ZeroAddress();
+    constructor(address creator_, address factory_) {
+        if (creator_ == address(0) || factory_ == address(0)) revert ZeroAddress();
         creator = creator_;
+        factory = factory_;
         holderRewardsVault = new FlashboysHolderRewardsVault(creator_);
     }
 
     modifier onlyCreator() {
-        if (msg.sender != creator) revert Unauthorized();
+        if (msg.sender != creator && msg.sender != factory) revert Unauthorized();
         _;
     }
 

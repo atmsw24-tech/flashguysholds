@@ -54,7 +54,7 @@ Generate the epoch root and proofs:
 npm run holder:merkle -- holders.json 1
 ```
 
-The script writes `holder-rewards-epoch-1.json` with the root, total ETH allocation, and an individual proof for every holder. Publish the root from the creator wallet in the Launchpad UI. Holders use their amount and proof to claim.
+The script writes `holder-rewards-epoch-1.json` with the root, `totalWei`, `totalEth`, and an individual proof for every holder. Fund the vault first, then publish the root and the exact `totalEth` allocation from the creator wallet in the Launchpad UI. The vault checks that unreserved on-chain funds cover the full allocation before accepting a root, reserves that amount against overlapping epochs, and decrements the reserve as claims are paid. Holders use their amount and proof to claim.
 
 The script builds proofs only; it does not fetch holder balances, define eligibility, or fund the vault. Before publishing a root, verify that the vault has enough ETH to cover the total allocation.
 
@@ -64,6 +64,6 @@ The script builds proofs only; it does not fetch holder balances, define eligibi
 - Launch requires the live Pons launch fee plus gas. The fee is read from the factory.
 - Splitter deployment and token launch are separate transactions. If the launch fails after splitter deployment, the error reports the deployed splitter address so it can be reused rather than deployed again.
 - Fee claims can be triggered only after Pons has credited the splitter in its escrow.
-- The holder vault publisher is the creator wallet. A published epoch root cannot be replaced.
+- The holder vault publisher is the creator wallet. A published epoch root cannot be replaced. Each root now requires a funded allocation; overlapping epochs cannot reserve the same funds twice. Unclaimed allocation remains reserved because there is no expiry/recovery path yet.
 - Holder rewards are not automatic until a trusted holder-balance indexer and snapshot policy are connected. No rewards or balances should be displayed as earned before on-chain funding and claims are verified.
 - This code has not been audited. Do not treat it as production-safe until independent Solidity review, testnet simulation, and mainnet deployment verification are complete.

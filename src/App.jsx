@@ -867,35 +867,50 @@ function TokenModal({ token, onClose, watched, onToggleWatch }) {
 }
 
 function HolderRewardsPage() {
-  const [competitionTab, setCompetitionTab] = useState("rules");
+  const [competitionTab, setCompetitionTab] = useState("payouts");
   const rules = [
     ["1", "Connect your wallet", "Use the wallet that holds the eligible token. Wallet ownership must be verified; connecting alone does not prove holdings."],
-    ["2", "Hold eligible tokens", "Each contest publishes eligible tokens, snapshot times, minimum balance, and hold period before it starts."],
-    ["3", "Rank by verified holdings", "Leaderboard positions must use indexed on-chain balances and anti-sybil checks, not self-reported balances."],
-    ["4", "Share verified creator fees", "A published share of creator fees can be distributed only after the fee source and payout mechanism are integrated and tested."]
+    ["2", "Hold eligible tokens", "Each reward epoch publishes eligible tokens, snapshot time, minimum balance, and hold period before it starts."],
+    ["3", "Rank by verified holdings", "Leaderboard positions must use indexed on-chain balances and published anti-sybil rules."],
+    ["4", "Claim your allocation", "The holder share is reserved in the rewards vault. Eligible wallets claim after a funded reward epoch and Merkle proof are published."]
   ];
   return (
     <section className="holder-rewards-page">
       <div className="rewards-hero">
         <div className="rewards-kicker">⚡ FLASHGUYS REWARDS ARENA</div>
         <h1>Hold. Compete. <span>Earn a share.</span></h1>
-        <p>Holder competitions designed to share eligible creator-fee revenue with qualifying token holders. Rewards are not guaranteed and depend on actual fees, published rules, and on-chain verification.</p>
-        <div className="rewards-status-row"><span className="rewards-status-pill">CREATOR FEE SOURCE: NOT CONNECTED</span><span className="rewards-status-pill rewards-status-muted">PAYOUTS: DISABLED</span></div>
+        <p>FLASHBOYS' independent Robinhood Chain fee design allocates 70% of collected trading fees to the creator and 30% to the holder rewards vault. Holder rewards depend on actual fees, eligibility rules, funded epochs, and on-chain claims; they are not guaranteed.</p>
+        <div className="rewards-status-row"><span className="rewards-status-pill">FEE SPLIT: 70% / 30%</span><span className="rewards-status-pill rewards-status-muted">LIVE PAYOUTS: NOT ENABLED</span></div>
       </div>
       <div className="rewards-metric-grid">
-        <div className="rewards-metric"><span>Current reward pool</span><strong>Not available</strong><small>Waiting for verified creator-fee data</small></div>
-        <div className="rewards-metric"><span>Eligible holders</span><strong>Not indexed</strong><small>Wallet-level holder data is required</small></div>
-        <div className="rewards-metric"><span>Competition status</span><strong>Setup required</strong><small>No live contest is accepting entries yet</small></div>
+        <div className="rewards-metric"><span>Holder fee allocation</span><strong>30%</strong><small>Of collected eligible trading fees</small></div>
+        <div className="rewards-metric"><span>Creator fee allocation</span><strong>70%</strong><small>Paid to the token creator</small></div>
+        <div className="rewards-metric"><span>Current reward pool</span><strong>Not available</strong><small>Live on-chain fee data is not connected</small></div>
       </div>
       <div className="rewards-panel">
-        <div className="rewards-panel-heading"><div><span className="rewards-kicker">LEADERBOARD</span><h2>Top holders</h2></div><span className="rewards-coming-soon">AWAITING ON-CHAIN INDEXER</span></div>
+        <div className="rewards-panel-heading"><div><span className="rewards-kicker">REWARD TRANSPARENCY</span><h2>How fees are distributed</h2></div><span className="rewards-coming-soon">CONTRACT FLOW · NOT LIVE</span></div>
         <div className="rewards-tabs">
-          <button className={competitionTab === "rules" ? "active" : ""} onClick={() => setCompetitionTab("rules")}>How it works</button>
+          <button className={competitionTab === "payouts" ? "active" : ""} onClick={() => setCompetitionTab("payouts")}>Fee distribution</button>
+          <button className={competitionTab === "rules" ? "active" : ""} onClick={() => setCompetitionTab("rules")}>How to earn</button>
           <button className={competitionTab === "eligibility" ? "active" : ""} onClick={() => setCompetitionTab("eligibility")}>Eligibility</button>
-          <button className={competitionTab === "payouts" ? "active" : ""} onClick={() => setCompetitionTab("payouts")}>Fee payouts</button>
         </div>
-        {competitionTab === "rules" ? <div className="rewards-rules-list">{rules.map(([number, title, description]) => <div className="rewards-rule" key={number}><span>{number}</span><div><strong>{title}</strong><p>{description}</p></div></div>)}</div> : competitionTab === "eligibility" ? <div className="rewards-info-block"><h3>Fair competition rules</h3><ul><li>Only publicly verifiable on-chain balances count.</li><li>Each contest publishes the token contract, snapshot time, minimum qualifying balance, and ranking method.</li><li>Anti-sybil exclusions must follow published rules.</li><li>Never share seed phrases or private keys to participate.</li></ul></div> : <div className="rewards-info-block"><h3>Creator fees and payouts</h3><ul><li>Creator-fee revenue must be verified from a supported protocol or fee wallet.</li><li>The exact holder allocation, operating fees, and payout schedule must be disclosed.</li><li>Distribution remains disabled until the fee source and payout mechanism are integrated and tested on-chain.</li><li>Rewards can be zero if no eligible creator fees are generated.</li></ul></div>}
-        <div className="rewards-notice">No earnings, holder rankings, or fee amounts are fabricated. Live competition data will appear after FLASHGUYS connects an indexed holder-balance source and verifies a creator-fee distribution mechanism.</div>
+        {competitionTab === "payouts" ? <div className="rewards-payout-content">
+          <div className="rewards-split-grid">
+            <div className="rewards-split-card creator"><span>CREATOR</span><strong>70%</strong><small>Creator wallet allocation</small></div>
+            <div className="rewards-split-card holders"><span>HOLDER REWARDS</span><strong>30%</strong><small>Reserved for eligible holders</small></div>
+          </div>
+          <div className="rewards-split-track" role="img" aria-label="70 percent creator allocation and 30 percent holder rewards allocation"><span className="creator-share"></span><span className="holder-share"></span></div>
+          <div className="rewards-example">
+            <div><span>Illustrative example · if $100 in fees is collected</span><strong>$70 creator</strong><strong>$30 holder vault</strong></div>
+            <small>This is an example of the programmed split, not a report of fees earned or funds currently available.</small>
+          </div>
+          <div className="rewards-flow">
+            <div><b>01</b><strong>Trading fee collected</strong><small>An authorized FLASHBOYS curve or fee collector sends the fee to the router.</small></div>
+            <div><b>02</b><strong>70 / 30 split</strong><small>The router sends 70% to the creator and 30% to the holder rewards vault.</small></div>
+            <div><b>03</b><strong>Holder claims</strong><small>A funded reward epoch and verified Merkle proof are required before a holder can claim.</small></div>
+          </div>
+          <div className="rewards-notice">Implementation status: the independent fee-router and holder-vault contracts are in the codebase. They have not been verified as deployed and tested on Robinhood Chain mainnet. The rewards pool, fee totals, and claims remain unavailable until deployment, fee-source integration, holder snapshots, and end-to-end tests are complete. No live earnings are being claimed here.</div>
+        </div> : competitionTab === "rules" ? <div className="rewards-rules-list">{rules.map(([number, title, description]) => <div className="rewards-rule" key={number}><span>{number}</span><div><strong>{title}</strong><p>{description}</p></div></div>)}</div> : <div className="rewards-info-block"><h3>Fair competition rules</h3><ul><li>Only publicly verifiable on-chain balances count.</li><li>Each reward epoch must publish the token contract, snapshot time, minimum qualifying balance, and ranking method.</li><li>Anti-sybil exclusions must follow published rules.</li><li>Rewards are claimable only after the vault is funded and a valid Merkle proof is published.</li><li>Never share seed phrases or private keys to participate.</li></ul></div>}
       </div>
     </section>
   );

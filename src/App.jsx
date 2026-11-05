@@ -301,7 +301,7 @@ function PriceChart({ token }) {
     async function load(){
       if(inFlight)return;inFlight=true;
       try{
-        const response=await fetch(apiUrl(`chart?address=${encodeURIComponent(address)}&chain=${chain}&timeframe=${timeframe}&fallbackPrice=${encodeURIComponent(Number(token?.price||livePrice||0))}&pairAddress=${encodeURIComponent(token?.pairAddress||"")}&_=${Date.now()}`,{cache:"no-store",headers:{Accept:"application/json"}});
+        const response=await fetch(apiUrl(`chart?address=${encodeURIComponent(address)}&chain=${chain}&timeframe=${timeframe}&fallbackPrice=${encodeURIComponent(Number(token?.price||livePrice||0))}&pairAddress=${encodeURIComponent(token?.pairAddress||"")}&_=${Date.now()}`),{cache:"no-store",headers:{Accept:"application/json"}});
         const data=await response.json();if(!response.ok)throw new Error(data.error||"Market data unavailable");if(cancelled)return;
         const price=Number(data.price);if(price>0)setLivePrice(price);
         const fetchedMarketCap=Number(data.marketCap||data.fdv||token?.marketCap||0);if(fetchedMarketCap>0)setMarketCap(fetchedMarketCap);
@@ -352,7 +352,7 @@ function PriceChart({ token }) {
       if(inFlight||cancelled)return;
       inFlight=true;
       try{
-        const response=await fetch(apiUrl(`chart?liveOnly=1&address=${encodeURIComponent(address)}&chain=${chain}&fallbackPrice=${encodeURIComponent(Number(token?.price||livePrice||0))}&_=${Date.now()}`,{cache:"no-store",headers:{Accept:"application/json"}});
+        const response=await fetch(apiUrl(`chart?liveOnly=1&address=${encodeURIComponent(address)}&chain=${chain}&fallbackPrice=${encodeURIComponent(Number(token?.price||livePrice||0))}&_=${Date.now()}`),{cache:"no-store",headers:{Accept:"application/json"}});
         const data=await response.json();
         if(!response.ok)throw new Error(data.error||"Live quote unavailable");
         if(cancelled)return;
@@ -456,7 +456,7 @@ function TokenXFeed({ token }) {
       if (inFlight) return;
       inFlight = true;
       try {
-        const response = await fetch(apiUrl("search?social=1&q=" + encodeURIComponent(terms.join(" OR ")), { cache: "no-store" });
+        const response = await fetch(apiUrl("search?social=1&q=" + encodeURIComponent(terms.join(" OR "))), { cache: "no-store" });
         const data = await response.json();
         if (cancelled) return;
         if (!response.ok || !data.success) throw new Error(data.error || "X posts could not be loaded.");
@@ -1361,7 +1361,7 @@ export default function App() {
     setRemoteSearchStatus("Searching live token markets…");
     const timer = setTimeout(async () => {
       try {
-        const response = await fetch(apiUrl(`search?q=${encodeURIComponent(query)}&chain=${encodeURIComponent(chain)}`);
+        const response = await fetch(apiUrl(`search?q=${encodeURIComponent(query)}&chain=${encodeURIComponent(chain)}`));
         const data = await response.json();
         if (cancelled) return;
         if (!response.ok || !data.success) throw new Error(data.error || "Search unavailable");

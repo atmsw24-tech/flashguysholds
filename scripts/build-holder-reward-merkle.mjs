@@ -4,9 +4,9 @@ import {
   AbiCoder, concat, formatEther, getAddress, keccak256, parseEther, toUtf8Bytes,
 } from "ethers";
 
-const [inputPath, epochArg] = process.argv.slice(2);
+const [inputPath, epochArg, assetArg = "native ETH"] = process.argv.slice(2);
 if (!inputPath || !epochArg || !/^\d+$/.test(epochArg)) {
-  console.error("Usage: npm run holder:merkle -- <holders.json> <epoch-number>");
+  console.error("Usage: npm run holder:merkle -- <holders.json> <epoch-number> [asset-label]");
   process.exit(1);
 }
 const epoch = BigInt(epochArg);
@@ -91,7 +91,7 @@ const datasetHash = keccak256(toUtf8Bytes(JSON.stringify({
 const output = {
   schemaVersion: 2,
   epoch: epoch.toString(),
-  asset: "native ETH",
+  asset: String(assetArg),
   root,
   datasetHash,
   snapshot: {

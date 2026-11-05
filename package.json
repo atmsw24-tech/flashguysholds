@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "worker": "node worker/index.js",
     "prebuild": "node scripts/compile-robinhood-token.mjs",
-    "holder:merkle": "node scripts/build-holder-reward-merkle.mjs"
+    "holder:merkle": "node scripts/build-holder-reward-merkle.mjs",
+    "holder:snapshot": "node scripts/snapshot-robinhood-holders.mjs"
   },
   "dependencies": {
     "@pump-fun/pump-sdk": "^2.0.0",

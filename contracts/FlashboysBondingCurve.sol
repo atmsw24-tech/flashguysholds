@@ -5,7 +5,7 @@ import "./FlashboysFeeRouter.sol";
 interface IFlashboysGraduationAdapter { function onGraduate(address token,uint256 tokenAmount,address feeCollector) external payable; }
 
 /// @notice Native-ETH constant-product launch curve. Trading fee is 1% by default;
-/// each buy/sell fee is split 70/30 by the independent FLASHBOYS router.
+/// each buy/sell fee is split 60/40 by the independent FLASHBOYS router.
 contract FlashboysBondingCurve {
  uint256 public constant BPS=10_000; uint256 public constant TOKEN_SUPPLY=1_000_000_000 ether;
  RobinhoodFixedSupplyToken public immutable token; FlashboysFeeRouter public immutable feeRouter;

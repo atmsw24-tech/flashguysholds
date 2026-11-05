@@ -23,6 +23,7 @@ if (rewardBudget <= 0n) throw new Error("Reward budget must be greater than zero
 
 const provider = new JsonRpcProvider(rpcUrl);
 const network = await provider.getNetwork();
+if (network.chainId !== 4663n) throw new Error("RPC must point to Robinhood Chain mainnet (chain ID 4663).");
 const abi = [
   "event Transfer(address indexed from,address indexed to,uint256 value)",
   "function decimals() view returns (uint8)",

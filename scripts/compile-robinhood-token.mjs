@@ -7,6 +7,7 @@ const contracts = [
   { sourcePath: "../contracts/FlashboysFeeRouter.sol", sourceName: "FlashboysFeeRouter.sol", contractName: "FlashboysFeeRouter" },
   { sourcePath: "../contracts/FlashboysBondingCurve.sol", sourceName: "FlashboysBondingCurve.sol", contractName: "FlashboysBondingCurve" },
   { sourcePath: "../contracts/FlashboysPostGraduationFeeCollector.sol", sourceName: "FlashboysPostGraduationFeeCollector.sol", contractName: "FlashboysPostGraduationFeeCollector" },
+  { sourcePath: "../contracts/FlashboysUniswapV3GraduationAdapter.sol", sourceName: "FlashboysUniswapV3GraduationAdapter.sol", contractName: "FlashboysUniswapV3GraduationAdapter" },
   { sourcePath: "../contracts/FlashboysFactory.sol", sourceName: "FlashboysFactory.sol", contractName: "FlashboysFactory" },
   { sourcePath: "../contracts/RobinhoodCreatorFeeSplitter.sol", sourceName: "RobinhoodCreatorFeeSplitter.sol", contractName: "FlashboysPonsFeeSplitter" },
 ];

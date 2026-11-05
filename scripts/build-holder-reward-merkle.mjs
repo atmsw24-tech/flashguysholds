@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { AbiCoder, concat, getAddress, keccak256, parseEther } from "ethers";
+import { AbiCoder, concat, formatEther, getAddress, keccak256, parseEther } from "ethers";
 
 const [inputPath, epochArg] = process.argv.slice(2);
 if (!inputPath || !epochArg || !/^\d+$/.test(epochArg)) {
@@ -25,7 +25,7 @@ const claims = holders.map((holder) => {
     : parseEther(String(holder.amountEth || "0"));
   if (amountWei <= 0n) throw new Error(`Reward must be positive for ${address}`);
   const leaf = keccak256(coder.encode(["uint256", "address", "uint256"], [epoch, address, amountWei]));
-  return { address, amountWei: amountWei.toString(), amountEth: (Number(amountWei) / 1e18).toString(), leaf };
+  return { address, amountWei: amountWei.toString(), amountEth: formatEther(amountWei), leaf };
 });
 
 function pairHash(a, b) {

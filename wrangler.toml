@@ -1,0 +1,9 @@
+# Cloudflare Pages configuration for the FLASHGUYS Vite frontend.
+# Build in the Cloudflare Pages dashboard with:
+#   Build command: npm run build
+#   Build output directory: dist
+
+name = "flashguys"
+compatibility_date = "2026-11-05"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "./dist"

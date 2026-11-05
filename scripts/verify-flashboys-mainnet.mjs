@@ -35,7 +35,7 @@ const router = new Contract(routerAddress, [
 const [creatorBps, holderBps, vault, authorized] = await Promise.all([
   router.CREATOR_BPS(), router.HOLDER_REWARDS_BPS(), router.holderRewardsVault(), router.feeCollector(adapterAddress),
 ]);
-if (creatorBps !== 7000n || holderBps !== 3000n) throw new Error("Router fee split is not 70/30.");
+if (creatorBps !== 6000n || holderBps !== 4000n) throw new Error("Router fee split is not 60/40.");
 if (!authorized) throw new Error("Graduation adapter is not authorized to forward post-graduation fees.");
 const adapter = new Contract(adapterAddress, [
   "function POSITION_MANAGER() view returns(address)",

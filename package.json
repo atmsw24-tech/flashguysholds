@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "worker": "node worker/index.js",
-    "prebuild": "node scripts/compile-robinhood-token.mjs"
+    "prebuild": "node scripts/compile-robinhood-token.mjs",
+    "holder:merkle": "node scripts/build-holder-reward-merkle.mjs"
   },
   "dependencies": {
     "@pump-fun/pump-sdk": "^2.0.0",

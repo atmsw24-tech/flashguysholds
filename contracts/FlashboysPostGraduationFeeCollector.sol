@@ -5,7 +5,7 @@ import "./FlashboysFeeRouter.sol";
 
 /// @title FlashboysPostGraduationFeeCollector
 /// @notice Receives native-asset fees from a FLASHBOYS-controlled DEX pool or hook
-/// and forwards them to the same independent 70/30 router used by the launch curve.
+/// and forwards them to the same independent 60/40 router used by the launch curve.
 contract FlashboysPostGraduationFeeCollector {
     address public immutable creator;
     FlashboysFeeRouter public immutable feeRouter;

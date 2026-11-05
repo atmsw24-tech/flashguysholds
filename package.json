@@ -8,11 +8,11 @@
     "build": "vite build",
     "preview": "vite preview",
     "worker": "node worker/index.js",
-    "prebuild": "node scripts/compile-robinhood-token.mjs",
     "holder:merkle": "node scripts/build-holder-reward-merkle.mjs",
     "holder:snapshot": "node scripts/snapshot-robinhood-holders.mjs",
     "deploy:flashboys": "node scripts/deploy-flashboys-mainnet.mjs",
-    "verify:flashboys": "node scripts/verify-flashboys-mainnet.mjs"
+    "verify:flashboys": "node scripts/verify-flashboys-mainnet.mjs",
+    "build:contracts": "node scripts/compile-robinhood-token.mjs"
   },
   "dependencies": {
     "@pump-fun/pump-sdk": "^2.0.0",

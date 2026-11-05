@@ -904,7 +904,7 @@ function LaunchPage({ tokens = [] }) {
   const [wallet, setWallet] = useState("");
   const [walletBusy, setWalletBusy] = useState(false);
   const [walletMessage, setWalletMessage] = useState("");
-  const [form, setForm] = useState({ name: "", symbol: "", description: "", image: "", website: "", twitter: "", telegram: "", supply: "1000000000" });
+  const [form, setForm] = useState({ name: "", symbol: "", description: "", image: "", website: "", twitter: "", telegram: "", supply: "1000000000", launchMarketCap: "2000" });
   const [showCreate, setShowCreate] = useState(false);
   const [logoFile, setLogoFile] = useState(null);
   const [pinataBusy, setPinataBusy] = useState(false);
@@ -1003,6 +1003,9 @@ function LaunchPage({ tokens = [] }) {
       setPinataMessage(error?.message || "Pinata upload failed.");
     } finally { setPinataBusy(false); }
   }
+  const launchSupply = Number(form.supply);
+  const launchTargetMcap = Number(form.launchMarketCap);
+  const impliedLaunchPrice = launchSupply > 0 && launchTargetMcap > 0 ? launchTargetMcap / launchSupply : 0;
   const formatMcap = (value) => {
     if (value === null || value === undefined || value === "" || !Number.isFinite(Number(value)) || Number(value) <= 0) return "Not reported";
     const n = Number(value);
@@ -1037,7 +1040,9 @@ function LaunchPage({ tokens = [] }) {
           <label>X profile<input value={form.twitter} onChange={update("twitter")} placeholder="https://x.com/…"/></label>
           <label>Telegram<input value={form.telegram} onChange={update("telegram")} placeholder="https://t.me/…"/></label>
           <label>Total supply<input value={form.supply} onChange={update("supply")} inputMode="numeric" placeholder="1000000000"/></label>
+          {!isSolana ? <label>Starting market cap target (USD)<input type="number" min="1" step="1" value={form.launchMarketCap} onChange={update("launchMarketCap")} placeholder="2000"/><small>Target FDV at launch, not guaranteed market value.</small></label> : null}
         </div>
+        {!isSolana ? <div className="fb-protocol-note fb-launch-price-preview"><strong>Robinhood launch settings</strong><br/>Starting market cap target: <strong>{formatMcap(launchTargetMcap)}</strong><br/>Implied opening token price: <strong>{impliedLaunchPrice > 0 ? "$" + impliedLaunchPrice.toFixed(12).replace(/0+$/, "").replace(/\.$/, "") : "Enter a valid supply and market cap"}</strong><br/><small>Calculated as target market cap ÷ total supply. Actual pool price and market cap depend on deployed liquidity and trading.</small></div> : null}
         <div className="fb-create-actions"><button type="button" className="fb-connect-wallet" onClick={uploadTokenMetadata} disabled={pinataBusy || !logoFile}>{pinataBusy ? "Uploading to Pinata…" : pinataResult ? "IPFS metadata uploaded ✓" : "Upload logo + metadata to IPFS"}</button><button type="button" className="fb-connect-wallet" onClick={connectWallet} disabled={walletBusy}>{walletBusy ? "Connecting…" : wallet ? "Wallet connected ✓" : isSolana ? "Connect Phantom / Solflare" : "Connect Robinhood Wallet"}</button><button type="button" className="fb-launch-disabled" disabled title="Available after the launch protocol is integrated and tested">Launch coin · Coming soon</button></div>
         {pinataMessage ? <p className="fb-wallet-message" role="status">{pinataMessage}</p> : null}
         {pinataResult ? <div className="fb-protocol-note"><strong>IPFS metadata ready:</strong> <code>{pinataResult.metadataUri}</code><br/><a href={pinataResult.metadataUrl} target="_blank" rel="noreferrer">View metadata ↗</a> · <a href={pinataResult.image} target="_blank" rel="noreferrer">View logo ↗</a><br/>Keep this metadata URI for the verified Solana launch transaction.</div> : null}

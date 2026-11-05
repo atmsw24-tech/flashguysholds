@@ -40,7 +40,7 @@ contract FlashboysBondingCurve {
   uint256 k=virtualEthReserve*virtualTokenReserve;uint256 newTokens=virtualTokenReserve+amount;
   uint256 newEth=k/newTokens;uint256 gross=virtualEthReserve-newEth;uint256 fee=gross*feeBps/BPS;netOut=gross-fee;
   if(netOut==0||netOut<minEthOut||netOut>nativeReserve)revert Slippage();
-  virtualTokenReserve=newTokens;virtualEthReserve=newEth;nativeReserve-=netOut;
+  virtualTokenReserve=newTokens;virtualEthReserve=newEth;nativeReserve-=gross;
   if(fee>0)feeRouter.collectNativeFee{value:fee}();(bool ok,)=payable(msg.sender).call{value:netOut}("");if(!ok)revert TransferFailed();
   emit Sold(msg.sender,amount,gross,fee,netOut);
  }

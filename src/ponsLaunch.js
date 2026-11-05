@@ -231,14 +231,17 @@ export async function claimPonsCreatorFees({ ethereum, splitterAddress, feeEscro
   return { transactionHash: receipt.hash, amountWei: nativeBalance.toString() };
 }
 
-export async function publishPonsHolderRewardsRoot({ ethereum, holderVault, epoch, root }) {
+export async function publishPonsHolderRewardsRoot({ ethereum, holderVault, epoch, root, totalAllocationEth }) {
   if (!ethereum?.request) throw new Error("Connect the creator wallet first.");
   await switchToRobinhoodMainnet(ethereum);
   if (!/^0x[a-fA-F0-9]{64}$/.test(String(root || ""))) throw new Error("Enter a valid 32-byte Merkle root.");
   const provider = new BrowserProvider(ethereum);
   const signer = await provider.getSigner();
-  const vault = new Contract(holderVault, ["function publishRoot(uint256 epoch,address asset,bytes32 root)"], signer);
-  const tx = await vault.publishRoot(BigInt(epoch), ZeroAddress, root);
+  const { parseEther } = await import("ethers");
+  const allocation = parseEther(String(totalAllocationEth || ""));
+  if (allocation <= 0n) throw new Error("Enter the total epoch allocation in ETH. It must be greater than zero.");
+  const vault = new Contract(holderVault, ["function publishRoot(uint256 epoch,address asset,bytes32 root,uint256 totalAllocation)"], signer);
+  const tx = await vault.publishRoot(BigInt(epoch), ZeroAddress, root, allocation);
   const receipt = await tx.wait();
   return { transactionHash: receipt.hash };
 }

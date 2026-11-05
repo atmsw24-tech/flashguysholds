@@ -961,17 +961,17 @@ function LaunchPage({ tokens = [] }) {
         const address = response?.publicKey?.toString?.() || provider.publicKey?.toString?.() || "";
         if (!address) throw new Error("No Solana wallet address was returned.");
         setWallet(address);
-        setWalletMessage("Solana wallet connected. Token deployment is not enabled yet.");
+        setWalletMessage("Solana wallet connected. Fixed-supply token creation is available on Devnet only.");
       } else {
         const ethereum = window.ethereum;
         if (!ethereum) throw new Error("Install Robinhood Wallet or MetaMask to connect.");
-        await ethereum.request({ method: "wallet_addEthereumChain", params: [{ chainId: "0x1237", chainName: "Robinhood Chain", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: ["https://rpc.mainnet.chain.robinhood.com"], blockExplorerUrls: ["https://robinhoodchain.blockscout.com"] }] });
-        await ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x1237" }] });
+        await ethereum.request({ method: "wallet_addEthereumChain", params: [{ chainId: "0xb626", chainName: "Robinhood Chain Testnet", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: ["https://rpc.testnet.chain.robinhood.com"], blockExplorerUrls: ["https://explorer.testnet.chain.robinhood.com"] }] });
+        await ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0xb626" }] });
         const accounts = await ethereum.request({ method: "eth_requestAccounts" });
         const address = accounts?.[0] || "";
         if (!address) throw new Error("No EVM wallet account was returned.");
         setWallet(address);
-        setWalletMessage("Wallet connected on Robinhood Chain. Token deployment is not enabled yet.");
+        setWalletMessage("Wallet connected on Robinhood Chain Testnet. Testnet deployment only.");
       }
     } catch (error) { setWalletMessage(error?.message || "Wallet connection failed."); }
     finally { setWalletBusy(false); }
@@ -1050,7 +1050,7 @@ function LaunchPage({ tokens = [] }) {
           <div><h1>Launch the <span>next movement.</span></h1><p>Create, discover and trade community tokens across Solana and Robinhood Chain—all from FLASHBOYS.</p></div>
           <button className="fb-create-launch" onClick={() => setShowCreate((v) => !v)}>{showCreate ? "Close creator" : "＋ Create a coin"}</button>
         </div>
-        <div className="fb-launchpad-stats"><div><small>NETWORK</small><strong>{isSolana ? "Solana" : "Robinhood Chain"}</strong></div><div><small>{isSolana ? "NETWORK" : "CHAIN ID"}</small><strong>{isSolana ? "Mainnet" : "4663"}</strong></div><div><small>LISTED IN FEED</small><strong>{networkTokens.length}</strong></div><div><small>YOUR WALLET</small><strong>{wallet ? wallet.slice(0, 6) + "…" + wallet.slice(-4) : "Not connected"}</strong></div></div>
+        <div className="fb-launchpad-stats"><div><small>NETWORK</small><strong>{isSolana ? "Solana" : "Robinhood Chain"}</strong></div><div><small>DEPLOYMENT NETWORK</small><strong>{isSolana ? "Solana Devnet" : "Robinhood Testnet · 46630"}</strong></div><div><small>LISTED IN FEED</small><strong>{networkTokens.length}</strong></div><div><small>YOUR WALLET</small><strong>{wallet ? wallet.slice(0, 6) + "…" + wallet.slice(-4) : "Not connected"}</strong></div></div>
       </div>
       <div className="fb-launch-toolbar">
         <div><span className="fb-section-eyebrow">CHOOSE YOUR NETWORK</span><h2>Launchpad networks</h2></div>

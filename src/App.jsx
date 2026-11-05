@@ -1092,7 +1092,7 @@ function LaunchPage({ tokens = [] }) {
         {launchMessage ? <p className="fb-wallet-message" role="status">{launchMessage}</p> : null}
         {launchResult?.protocol === "Pons V2" ? <div className="fb-protocol-note">
           <strong>Holder reward administration</strong>
-          <p>Creator-fee claims first fund the holder vault. Publish a Merkle root for a verified holder snapshot; holders then claim their allocated ETH with a proof.</p>
+          <p>Creator fees become claimable after Pons sweeps them into its escrow. Claiming funds the holder vault. Publish a Merkle root from a verified holder snapshot; holders then claim ETH with a proof. Holder snapshots are not automated yet.</p>
           <label>Reward epoch<input type="number" min="1" value={holderEpoch} onChange={(event) => setHolderEpoch(event.target.value)} /></label>
           <label>Holder snapshot Merkle root<input value={holderRoot} onChange={(event) => setHolderRoot(event.target.value)} placeholder="0x… 32-byte root" /></label>
           <button type="button" className="fb-connect-wallet" disabled={holderActionBusy || !holderRoot} onClick={async () => { setHolderActionBusy(true); setHolderActionMessage(""); try { const result = await publishPonsHolderRewardsRoot({ ethereum: window.ethereum, holderVault: launchResult.holderVault, epoch: holderEpoch, root: holderRoot }); setHolderActionMessage("Holder reward root published on-chain. Transaction: " + result.transactionHash); } catch (error) { setHolderActionMessage(error?.shortMessage || error?.message || "Could not publish holder root."); } finally { setHolderActionBusy(false); } }}>Publish holder reward root</button>

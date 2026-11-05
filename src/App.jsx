@@ -5,6 +5,7 @@ import { startLiveFeeds, subscribeLiveToken } from "./liveFeeds";
 import AccountPanel from "./AccountPanel";
 import "./styles.css";
 
+const FIXED_TOKEN_SUPPLY = 1_000_000_000;
 const MAX_VISIBLE_TOKENS = 50;
 const MAX_STORED_TOKENS = 1500;
 
@@ -904,7 +905,7 @@ function LaunchPage({ tokens = [] }) {
   const [wallet, setWallet] = useState("");
   const [walletBusy, setWalletBusy] = useState(false);
   const [walletMessage, setWalletMessage] = useState("");
-  const [form, setForm] = useState({ name: "", symbol: "", description: "", image: "", website: "", twitter: "", telegram: "", supply: "1000000000", launchMarketCap: "2000" });
+  const [form, setForm] = useState({ name: "", symbol: "", description: "", image: "", website: "", twitter: "", telegram: "", supply: String(FIXED_TOKEN_SUPPLY), launchMarketCap: "2000" });
   const [showCreate, setShowCreate] = useState(false);
   const [logoFile, setLogoFile] = useState(null);
   const [pinataBusy, setPinataBusy] = useState(false);
@@ -971,7 +972,7 @@ function LaunchPage({ tokens = [] }) {
     finally { setWalletBusy(false); }
   }
 
-  const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const update = (key) => (event) => setForm((current) => ({ ...current, [key]: key === "supply" ? String(FIXED_TOKEN_SUPPLY) : event.target.value }));
 
   async function uploadTokenMetadata() {
     if (!logoFile) { setPinataMessage("Choose a logo image first."); return; }
@@ -1003,7 +1004,7 @@ function LaunchPage({ tokens = [] }) {
       setPinataMessage(error?.message || "Pinata upload failed.");
     } finally { setPinataBusy(false); }
   }
-  const launchSupply = Number(form.supply);
+  const launchSupply = FIXED_TOKEN_SUPPLY;
   const launchTargetMcap = Number(form.launchMarketCap);
   const impliedLaunchPrice = launchSupply > 0 && launchTargetMcap > 0 ? launchTargetMcap / launchSupply : 0;
   const formatMcap = (value) => {
@@ -1039,15 +1040,15 @@ function LaunchPage({ tokens = [] }) {
           <label>Website<input value={form.website} onChange={update("website")} placeholder="https://…"/></label>
           <label>X profile<input value={form.twitter} onChange={update("twitter")} placeholder="https://x.com/…"/></label>
           <label>Telegram<input value={form.telegram} onChange={update("telegram")} placeholder="https://t.me/…"/></label>
-          <label>Total supply<input value={form.supply} onChange={update("supply")} inputMode="numeric" placeholder="1000000000"/></label>
+          <label>Total supply<input value={FIXED_TOKEN_SUPPLY.toLocaleString("en-US")} readOnly aria-readonly="true" inputMode="numeric"/><small>Fixed protocol supply: 1,000,000,000 tokens. Creators cannot change or mint additional supply.</small></label>
           {!isSolana ? <label>Starting market cap target (USD)<input type="number" min="1" step="1" value={form.launchMarketCap} onChange={update("launchMarketCap")} placeholder="2000"/><small>Target FDV at launch, not guaranteed market value.</small></label> : null}
         </div>
-        {!isSolana ? <div className="fb-protocol-note fb-launch-price-preview"><strong>Robinhood launch settings</strong><br/>Starting market cap target: <strong>{formatMcap(launchTargetMcap)}</strong><br/>Implied opening token price: <strong>{impliedLaunchPrice > 0 ? "$" + impliedLaunchPrice.toFixed(12).replace(/0+$/, "").replace(/\.$/, "") : "Enter a valid supply and market cap"}</strong><br/><small>Calculated as target market cap ÷ total supply. Actual pool price and market cap depend on deployed liquidity and trading.</small></div> : null}
+        {!isSolana ? <div className="fb-protocol-note fb-launch-price-preview"><strong>Robinhood launch settings</strong><br/>Starting market cap target: <strong>{formatMcap(launchTargetMcap)}</strong><br/>Fixed total supply: <strong>{FIXED_TOKEN_SUPPLY.toLocaleString("en-US")}</strong><br/>Implied opening token price: <strong>{impliedLaunchPrice > 0 ? "$" + impliedLaunchPrice.toFixed(12).replace(/0+$/, "").replace(/\.$/, "") : "Enter a valid supply and market cap"}</strong><br/><small>Calculated as target market cap ÷ total supply. Actual pool price and market cap depend on deployed liquidity and trading.</small></div> : null}
         <div className="fb-create-actions"><button type="button" className="fb-connect-wallet" onClick={uploadTokenMetadata} disabled={pinataBusy || !logoFile}>{pinataBusy ? "Uploading to Pinata…" : pinataResult ? "IPFS metadata uploaded ✓" : "Upload logo + metadata to IPFS"}</button><button type="button" className="fb-connect-wallet" onClick={connectWallet} disabled={walletBusy}>{walletBusy ? "Connecting…" : wallet ? "Wallet connected ✓" : isSolana ? "Connect Phantom / Solflare" : "Connect Robinhood Wallet"}</button><button type="button" className="fb-launch-disabled" disabled title="Available after the launch protocol is integrated and tested">Launch coin · Coming soon</button></div>
         {pinataMessage ? <p className="fb-wallet-message" role="status">{pinataMessage}</p> : null}
         {pinataResult ? <div className="fb-protocol-note"><strong>IPFS metadata ready:</strong> <code>{pinataResult.metadataUri}</code><br/><a href={pinataResult.metadataUrl} target="_blank" rel="noreferrer">View metadata ↗</a> · <a href={pinataResult.image} target="_blank" rel="noreferrer">View logo ↗</a><br/>Keep this metadata URI for the verified Solana launch transaction.</div> : null}
         {walletMessage ? <p className="fb-wallet-message" role="status">{walletMessage}</p> : null}
-        <div className="fb-protocol-note"><strong>Launch status:</strong> Wallet connection is available, but token deployment is not. {isSolana ? "Solana needs a verified Pump program integration, metadata upload, transaction simulation, and mainnet testing." : "Robinhood Chain needs deployed and independently reviewed bonding-curve and graduation contracts."} No token is created and no funds are collected by this form.</div>
+        <div className="fb-protocol-note"><strong>Launch status:</strong> Wallet connection is available, but token deployment is not. {isSolana ? "Solana needs a verified Pump program integration, metadata upload, transaction simulation, and mainnet testing." : "Robinhood Chain needs deployed and independently reviewed bonding-curve and graduation contracts."} No token is created and no funds are collected by this form. The 1,000,000,000 supply is locked in the launch configuration; on-chain enforcement still requires the audited deployment contract, which is not yet enabled.</div>
       </section> : null}
       <div className="fb-launch-toolbar"><div><span className="fb-section-eyebrow">THE LAUNCH FLOOR</span><h2>Explore {isSolana ? "Solana" : "Robinhood Chain"} launches</h2></div><div className="fb-launch-filters">{[["all","All coins"],["new","New"],["active","Active"],["graduated","Graduated"]].map(([value,label]) => <button key={value} className={tab===value?"active":""} onClick={() => setTab(value)}>{label}</button>)}</div></div>
       {visibleTokens.length ? <div className="fb-launch-grid">{visibleTokens.slice(0,50).map((token) => <article className="fb-launch-token" key={token.address || token.mint}>

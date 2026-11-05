@@ -5,6 +5,7 @@ import { startLiveFeeds, subscribeLiveToken } from "./liveFeeds";
 import AccountPanel from "./AccountPanel";
 import { deploySolanaFixedSupplyToken } from "./solanaFixedSupplyLaunch";
 import { deployRobinhoodFixedSupplyToken } from "./robinhoodFixedSupplyLaunch";
+import { launchOnPons, readPonsLaunchOptions, claimPonsCreatorFees } from "./ponsLaunch";
 import "./styles.css";
 
 const FIXED_TOKEN_SUPPLY = 1_000_000_000;
@@ -916,6 +917,11 @@ function LaunchPage({ tokens = [] }) {
   const [launchBusy, setLaunchBusy] = useState(false);
   const [launchMessage, setLaunchMessage] = useState("");
   const [launchResult, setLaunchResult] = useState(null);
+  const [ponsOptions, setPonsOptions] = useState(null);
+  const [ponsConfigId, setPonsConfigId] = useState("0");
+  const [confirmMainnetLaunch, setConfirmMainnetLaunch] = useState(false);
+  const [feeClaimBusy, setFeeClaimBusy] = useState(false);
+  const [feeClaimMessage, setFeeClaimMessage] = useState("");
   const isSolana = network === "sol";
   // Launchpad is a verified-market view, not a raw token-address dump.
   // Hide malformed contracts, placeholder metadata, and tokens with no live,
@@ -965,13 +971,17 @@ function LaunchPage({ tokens = [] }) {
       } else {
         const ethereum = window.ethereum;
         if (!ethereum) throw new Error("Install Robinhood Wallet or MetaMask to connect.");
-        await ethereum.request({ method: "wallet_addEthereumChain", params: [{ chainId: "0xb626", chainName: "Robinhood Chain Testnet", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: ["https://rpc.testnet.chain.robinhood.com"], blockExplorerUrls: ["https://explorer.testnet.chain.robinhood.com"] }] });
-        await ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0xb626" }] });
+        await ethereum.request({ method: "wallet_addEthereumChain", params: [{ chainId: "0x1237", chainName: "Robinhood Chain", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: ["https://rpc.mainnet.chain.robinhood.com"], blockExplorerUrls: ["https://robinhoodchain.blockscout.com"] }] });
+        await ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x1237" }] });
         const accounts = await ethereum.request({ method: "eth_requestAccounts" });
         const address = accounts?.[0] || "";
         if (!address) throw new Error("No EVM wallet account was returned.");
         setWallet(address);
-        setWalletMessage("Wallet connected on Robinhood Chain Testnet. Testnet deployment only.");
+        setWalletMessage("Wallet connected to Robinhood Chain mainnet. Reading live Pons V2 launch settings…");
+        const options = await readPonsLaunchOptions(ethereum);
+        setPonsOptions(options);
+        if (options.configs.length) setPonsConfigId(String(options.configs[0].id));
+        setWalletMessage(options.configs.length ? "Connected to Pons V2 on Robinhood Chain mainnet. Review the live launch fee and economics before launching." : "Connected, but Pons has no enabled launch configurations right now.");
       }
     } catch (error) { setWalletMessage(error?.message || "Wallet connection failed."); }
     finally { setWalletBusy(false); }
@@ -991,12 +1001,14 @@ function LaunchPage({ tokens = [] }) {
         result = await deploySolanaFixedSupplyToken({ provider, name: form.name, symbol: form.symbol, onStatus: setLaunchMessage });
       } else {
         if (!wallet) throw new Error("Connect your Robinhood Chain wallet first.");
-        result = await deployRobinhoodFixedSupplyToken({ ethereum: window.ethereum, name: form.name, symbol: form.symbol, onStatus: setLaunchMessage });
+        if (!confirmMainnetLaunch) throw new Error("Confirm that you understand this is a real Robinhood Chain mainnet launch before continuing.");
+        result = await launchOnPons({ ethereum: window.ethereum, name: form.name, symbol: form.symbol, description: form.description, logo: pinataResult?.image || form.image, website: form.website, twitter: form.twitter, telegram: form.telegram, launchConfigId: ponsConfigId, onStatus: setLaunchMessage });
       }
       setLaunchResult(result);
-      setLaunchMessage("Token deployed and fixed supply verified on-chain. This is a test-network deployment, not a mainnet launch.");
+      setLaunchMessage(result.protocol === "Pons V2" ? "Pons V2 launch confirmed on Robinhood Chain mainnet. Your creator fees route through the FLASHBOYS splitter." : "Token deployed and fixed supply verified on-chain.");
     } catch (error) {
       setLaunchMessage(error?.shortMessage || error?.message || "Token deployment failed.");
+      if (error?.splitterAddress) setLaunchMessage((error?.message || "Pons launch failed.") + " Splitter address: " + error.splitterAddress);
     } finally { setLaunchBusy(false); }
   }
 
@@ -1050,14 +1062,14 @@ function LaunchPage({ tokens = [] }) {
           <div><h1>Launch the <span>next movement.</span></h1><p>Create, discover and trade community tokens across Solana and Robinhood Chain—all from FLASHBOYS.</p></div>
           <button className="fb-create-launch" onClick={() => setShowCreate((v) => !v)}>{showCreate ? "Close creator" : "＋ Create a coin"}</button>
         </div>
-        <div className="fb-launchpad-stats"><div><small>NETWORK</small><strong>{isSolana ? "Solana" : "Robinhood Chain"}</strong></div><div><small>DEPLOYMENT NETWORK</small><strong>{isSolana ? "Solana Devnet" : "Robinhood Testnet · 46630"}</strong></div><div><small>LISTED IN FEED</small><strong>{networkTokens.length}</strong></div><div><small>YOUR WALLET</small><strong>{wallet ? wallet.slice(0, 6) + "…" + wallet.slice(-4) : "Not connected"}</strong></div></div>
+        <div className="fb-launchpad-stats"><div><small>NETWORK</small><strong>{isSolana ? "Solana" : "Robinhood Chain"}</strong></div><div><small>DEPLOYMENT NETWORK</small><strong>{isSolana ? "Solana Devnet" : "Robinhood Chain Mainnet · 4663"}</strong></div><div><small>LISTED IN FEED</small><strong>{networkTokens.length}</strong></div><div><small>YOUR WALLET</small><strong>{wallet ? wallet.slice(0, 6) + "…" + wallet.slice(-4) : "Not connected"}</strong></div></div>
       </div>
       <div className="fb-launch-toolbar">
         <div><span className="fb-section-eyebrow">CHOOSE YOUR NETWORK</span><h2>Launchpad networks</h2></div>
         <div className="fb-launch-filters"><button className={isSolana ? "active" : ""} onClick={() => { setNetwork("sol"); setWallet(""); setWalletMessage(""); setTab("all"); }}>Solana</button><button className={!isSolana ? "active" : ""} onClick={() => { setNetwork("robinhood"); setWallet(""); setWalletMessage(""); setTab("all"); }}>Robinhood Chain</button></div>
       </div>
       {showCreate ? <section className="fb-create-panel">
-        <div className="fb-create-heading"><div><span className="fb-section-eyebrow">TOKEN STUDIO · {isSolana ? "SOLANA" : "ROBINHOOD CHAIN"}</span><h2>Create your coin</h2><p>{isSolana ? "Prepare a Solana SPL token with metadata and a Pump.fun-style bonding-curve launch." : "Prepare your Robinhood Chain token for a bonding-curve launch and liquidity graduation."}</p></div><span className="fb-protocol-status">LAUNCH INTEGRATION IN PROGRESS</span></div>
+        <div className="fb-create-heading"><div><span className="fb-section-eyebrow">TOKEN STUDIO · {isSolana ? "SOLANA" : "ROBINHOOD CHAIN"}</span><h2>Create your coin</h2><p>{isSolana ? "Prepare a Solana SPL token with metadata and a Pump.fun-style bonding-curve launch." : "Launch through Pons V2: bonding curve, fee escrow, and Uniswap V4 graduation."}</p></div><span className="fb-protocol-status">{isSolana ? "DEVNET TOKEN TEST" : "PONS V2 MAINNET"}</span></div>
         <div className="fb-create-grid">
           <label>Token name<input value={form.name} onChange={update("name")} placeholder="e.g. Flash Rocket" maxLength={32}/></label>
           <label>Ticker<input value={form.symbol} onChange={update("symbol")} placeholder="e.g. FROCKET" maxLength={10}/></label>
@@ -1069,14 +1081,16 @@ function LaunchPage({ tokens = [] }) {
           <label>Total supply<input value={FIXED_TOKEN_SUPPLY.toLocaleString("en-US")} readOnly aria-readonly="true" inputMode="numeric"/><small>Fixed protocol supply: 1,000,000,000 tokens. Creators cannot change or mint additional supply.</small></label>
           {!isSolana ? <label>Starting market cap target (USD)<input type="number" min="1" step="1" value={form.launchMarketCap} onChange={update("launchMarketCap")} placeholder="2000"/><small>Target FDV at launch, not guaranteed market value.</small></label> : null}
         </div>
-        {!isSolana ? <div className="fb-protocol-note fb-launch-price-preview"><strong>Robinhood launch settings</strong><br/>Starting market cap target: <strong>{formatMcap(launchTargetMcap)}</strong><br/>Fixed total supply: <strong>{FIXED_TOKEN_SUPPLY.toLocaleString("en-US")}</strong><br/>Implied opening token price: <strong>{impliedLaunchPrice > 0 ? "$" + impliedLaunchPrice.toFixed(12).replace(/0+$/, "").replace(/\.$/, "") : "Enter a valid supply and market cap"}</strong><br/><small>Calculated as target market cap ÷ total supply. Actual pool price and market cap depend on deployed liquidity and trading.</small></div> : null}
-        <div className="fb-create-actions"><button type="button" className="fb-connect-wallet" onClick={uploadTokenMetadata} disabled={pinataBusy || !logoFile}>{pinataBusy ? "Uploading to Pinata…" : pinataResult ? "IPFS metadata uploaded ✓" : "Upload logo + metadata to IPFS"}</button><button type="button" className="fb-connect-wallet" onClick={connectWallet} disabled={walletBusy}>{walletBusy ? "Connecting…" : wallet ? "Wallet connected ✓" : isSolana ? "Connect Phantom / Solflare" : "Connect Robinhood Wallet"}</button><button type="button" className="fb-create-launch" onClick={launchFixedSupplyToken} disabled={launchBusy || !wallet || !form.name.trim() || !form.symbol.trim()}>{launchBusy ? "Deploying…" : isSolana ? "Create fixed-supply token · Devnet" : "Deploy fixed-supply token · Testnet"}</button></div>
+undefined
+        {!isSolana && ponsOptions ? <div className="fb-protocol-note fb-launch-price-preview"><strong>Pons V2 live launch economics</strong><br/>Protocol share: <strong>{(ponsOptions.protocolFeeShareBps / 100).toFixed(2)}%</strong> · Creator share before FLASHBOYS split: <strong>{((10000 - ponsOptions.protocolFeeShareBps - ponsOptions.buybackBurnBps) / 100).toFixed(2)}%</strong><br/>Buyback allocation: <strong>{(ponsOptions.buybackBurnBps / 100).toFixed(2)}%</strong> · FLASHBOYS holder rewards: <strong>20% of creator proceeds</strong><br/>Pons launch fee: <strong>{Number(ponsOptions.launchFeeEth).toFixed(6)} ETH</strong><br/><label>Pons launch configuration<select value={ponsConfigId} onChange={(event) => setPonsConfigId(event.target.value)}>{ponsOptions.configs.map((config) => <option key={config.id} value={config.id}>Config {config.id} · Curve fee {(config.curveFeeBps / 100).toFixed(2)}% · Supply {(Number(config.supply) / 1e18).toLocaleString("en-US")}</option>)}</select></label><small>Configuration and fee policy are read live from Pons before launch. The economics are pinned into the launch transaction.</small></div> : null}
+        {!isSolana ? <label className="fb-mainnet-confirm"><input type="checkbox" checked={confirmMainnetLaunch} onChange={(event) => setConfirmMainnetLaunch(event.target.checked)} /> I understand this creates a real token on Robinhood Chain mainnet and requires ETH for the Pons launch fee and gas.</label> : null}
+        <div className="fb-create-actions"><button type="button" className="fb-connect-wallet" onClick={uploadTokenMetadata} disabled={pinataBusy || !logoFile}>{pinataBusy ? "Uploading to Pinata…" : pinataResult ? "IPFS metadata uploaded ✓" : "Upload logo + metadata to IPFS"}</button><button type="button" className="fb-connect-wallet" onClick={connectWallet} disabled={walletBusy}>{walletBusy ? "Connecting…" : wallet ? "Wallet connected ✓" : isSolana ? "Connect Phantom / Solflare" : "Connect Robinhood Wallet"}</button><button type="button" className="fb-create-launch" onClick={launchFixedSupplyToken} disabled={launchBusy || !wallet || !form.name.trim() || !form.symbol.trim() || (!isSolana && !confirmMainnetLaunch)}>{launchBusy ? "Deploying…" : isSolana ? "Create fixed-supply token · Devnet" : "Launch with Pons V2 · Mainnet"}</button></div>
         {launchMessage ? <p className="fb-wallet-message" role="status">{launchMessage}</p> : null}
-        {launchResult ? <div className="fb-protocol-note"><strong>On-chain fixed-supply verification passed</strong><br/>Network: {launchResult.network}<br/>Supply: {Number(launchResult.supply).toLocaleString("en-US")}<br/>Decimals: {launchResult.decimals}<br/>{launchResult.mint ? <>Mint: <code>{launchResult.mint}</code><br/>Mint authority: {String(launchResult.mintAuthority)} · Freeze authority: {String(launchResult.freezeAuthority)}<br/><a href={"https://explorer.solana.com/address/" + launchResult.mint + "?cluster=devnet"} target="_blank" rel="noreferrer">View mint on Solana Explorer ↗</a></> : <>Contract: <code>{launchResult.address}</code><br/>Mint function: {launchResult.mintFunction}<br/><a href={launchResult.explorerUrl} target="_blank" rel="noreferrer">View contract on Robinhood testnet explorer ↗</a></>}<br/>Transaction: <code>{launchResult.signature || launchResult.transactionHash}</code></div> : null}
+undefined
         {pinataMessage ? <p className="fb-wallet-message" role="status">{pinataMessage}</p> : null}
         {pinataResult ? <div className="fb-protocol-note"><strong>IPFS metadata ready:</strong> <code>{pinataResult.metadataUri}</code><br/><a href={pinataResult.metadataUrl} target="_blank" rel="noreferrer">View metadata ↗</a> · <a href={pinataResult.image} target="_blank" rel="noreferrer">View logo ↗</a><br/>Keep this metadata URI for the verified Solana launch transaction.</div> : null}
         {walletMessage ? <p className="fb-wallet-message" role="status">{walletMessage}</p> : null}
-        <div className="fb-protocol-note"><strong>Test deployment only:</strong> {isSolana ? "This creates a standard SPL token on Solana Devnet, then permanently revokes mint and freeze authority. Switch your wallet to Devnet and use devnet SOL for fees." : "This deploys the fixed-supply ERC-20 to Robinhood Chain Testnet (chain ID 46630). It is not a mainnet launch."} Exactly 1,000,000,000 tokens are created. The launch flow does not yet create a bonding curve, liquidity pool, graduation route, or on-chain token metadata. IPFS metadata upload is separate and is not attached to the Solana mint by this test flow. Do not use mainnet funds for this test.</div>
+        <div className="fb-protocol-note"><strong>{isSolana ? "Solana Devnet test:" : "Robinhood Chain mainnet:"}</strong> {isSolana ? "This creates a standard SPL token on Solana Devnet, then permanently revokes mint and freeze authority. It is a test deployment only." : "This creates a Pons V2 token on chain 4663, with a live bonding curve, Pons fee escrow, and Pons V4 graduation path. The creator-fee splitter routes 80% of creator proceeds to the creator and 20% to the holder-rewards vault. Pons protocol fees remain upstream and are not redirected. Mainnet transactions spend real ETH. Review every wallet prompt."}</div>
       </section> : null}
       <div className="fb-launch-toolbar"><div><span className="fb-section-eyebrow">THE LAUNCH FLOOR</span><h2>Explore {isSolana ? "Solana" : "Robinhood Chain"} launches</h2></div><div className="fb-launch-filters">{[["all","All coins"],["new","New"],["active","Active"],["graduated","Graduated"]].map(([value,label]) => <button key={value} className={tab===value?"active":""} onClick={() => setTab(value)}>{label}</button>)}</div></div>
       {visibleTokens.length ? <div className="fb-launch-grid">{visibleTokens.slice(0,50).map((token) => <article className="fb-launch-token" key={token.address || token.mint}>

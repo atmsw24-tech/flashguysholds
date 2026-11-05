@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 /// @title FlashboysHolderRewardsVault
-/// @notice Holds the holder portion of Pons creator-fee claims. The creator
+/// @notice Holds the holder portion of independent FLASHBOYS trading-fee rewards. The creator
 /// publishes funded Merkle roots for each reward epoch and asset; holders claim
 /// their published allocation with a proof. Each epoch is fully reserved before
 /// its root can be published, preventing underfunded or overlapping promises.

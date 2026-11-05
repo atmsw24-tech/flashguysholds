@@ -1385,7 +1385,7 @@ html, body, #root {
 
 /* Rewards page: transparent creator / holder fee allocation */
 .rewards-payout-content{padding-top:14px}
-.rewards-split-grid{display:grid;grid-template-columns:7fr 3fr;gap:12px}
+.rewards-split-grid{display:grid;grid-template-columns:3fr 2fr;gap:12px}
 .rewards-split-card{display:grid;gap:8px;padding:20px;border:1px solid rgba(255,255,255,.09);border-radius:14px;background:#101620}
 .rewards-split-card>span{font-size:10px;font-weight:900;letter-spacing:.12em;color:#a6afbd}
 .rewards-split-card strong{font-size:clamp(30px,5vw,44px);line-height:1;color:#f5f7fa}
@@ -1393,8 +1393,8 @@ html, body, #root {
 .rewards-split-card.holders{border-color:rgba(168,85,247,.35);background:linear-gradient(145deg,rgba(168,85,247,.12),#101620)}
 .rewards-split-card.holders strong{color:#d8b4fe}
 .rewards-split-track{display:flex;height:13px;overflow:hidden;margin:14px 0 18px;border-radius:999px;background:#222a36}
-.rewards-split-track .creator-share{width:70%;background:#7c8798}
-.rewards-split-track .holder-share{width:30%;background:#a855f7}
+.rewards-split-track .creator-share{width:60%;background:#7c8798}
+.rewards-split-track .holder-share{width:40%;background:#a855f7}
 .rewards-example{display:grid;gap:9px;padding:16px;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:rgba(255,255,255,.025)}
 .rewards-example>div{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .rewards-example>div span{width:100%;color:#9ba5b4;font-size:12px}

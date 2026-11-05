@@ -3,6 +3,8 @@ import { fetchGMGNTokens } from "./marketData";
 import { isRealTokenRecord, hasVerifiedLiveMarket } from "./tokenValidation";
 import { startLiveFeeds, subscribeLiveToken } from "./liveFeeds";
 import AccountPanel from "./AccountPanel";
+import { deploySolanaFixedSupplyToken } from "./solanaFixedSupplyLaunch";
+import { deployRobinhoodFixedSupplyToken } from "./robinhoodFixedSupplyLaunch";
 import "./styles.css";
 
 const FIXED_TOKEN_SUPPLY = 1_000_000_000;
@@ -911,6 +913,9 @@ function LaunchPage({ tokens = [] }) {
   const [pinataBusy, setPinataBusy] = useState(false);
   const [pinataMessage, setPinataMessage] = useState("");
   const [pinataResult, setPinataResult] = useState(null);
+  const [launchBusy, setLaunchBusy] = useState(false);
+  const [launchMessage, setLaunchMessage] = useState("");
+  const [launchResult, setLaunchResult] = useState(null);
   const isSolana = network === "sol";
   // Launchpad is a verified-market view, not a raw token-address dump.
   // Hide malformed contracts, placeholder metadata, and tokens with no live,
@@ -973,6 +978,27 @@ function LaunchPage({ tokens = [] }) {
   }
 
   const update = (key) => (event) => setForm((current) => ({ ...current, [key]: key === "supply" ? String(FIXED_TOKEN_SUPPLY) : event.target.value }));
+
+  async function launchFixedSupplyToken() {
+    if (launchBusy) return;
+    if (!form.name.trim() || !form.symbol.trim()) { setLaunchMessage("Enter a token name and ticker first."); return; }
+    setLaunchBusy(true); setLaunchMessage(""); setLaunchResult(null);
+    try {
+      let result;
+      if (isSolana) {
+        const provider = window.phantom?.solana || window.solflare || window.solana;
+        if (!provider?.publicKey) throw new Error("Connect your Solana wallet first, and switch it to Solana Devnet.");
+        result = await deploySolanaFixedSupplyToken({ provider, name: form.name, symbol: form.symbol, onStatus: setLaunchMessage });
+      } else {
+        if (!wallet) throw new Error("Connect your Robinhood Chain wallet first.");
+        result = await deployRobinhoodFixedSupplyToken({ ethereum: window.ethereum, name: form.name, symbol: form.symbol, onStatus: setLaunchMessage });
+      }
+      setLaunchResult(result);
+      setLaunchMessage("Token deployed and fixed supply verified on-chain. This is a test-network deployment, not a mainnet launch.");
+    } catch (error) {
+      setLaunchMessage(error?.shortMessage || error?.message || "Token deployment failed.");
+    } finally { setLaunchBusy(false); }
+  }
 
   async function uploadTokenMetadata() {
     if (!logoFile) { setPinataMessage("Choose a logo image first."); return; }
@@ -1044,11 +1070,13 @@ function LaunchPage({ tokens = [] }) {
           {!isSolana ? <label>Starting market cap target (USD)<input type="number" min="1" step="1" value={form.launchMarketCap} onChange={update("launchMarketCap")} placeholder="2000"/><small>Target FDV at launch, not guaranteed market value.</small></label> : null}
         </div>
         {!isSolana ? <div className="fb-protocol-note fb-launch-price-preview"><strong>Robinhood launch settings</strong><br/>Starting market cap target: <strong>{formatMcap(launchTargetMcap)}</strong><br/>Fixed total supply: <strong>{FIXED_TOKEN_SUPPLY.toLocaleString("en-US")}</strong><br/>Implied opening token price: <strong>{impliedLaunchPrice > 0 ? "$" + impliedLaunchPrice.toFixed(12).replace(/0+$/, "").replace(/\.$/, "") : "Enter a valid supply and market cap"}</strong><br/><small>Calculated as target market cap ÷ total supply. Actual pool price and market cap depend on deployed liquidity and trading.</small></div> : null}
-        <div className="fb-create-actions"><button type="button" className="fb-connect-wallet" onClick={uploadTokenMetadata} disabled={pinataBusy || !logoFile}>{pinataBusy ? "Uploading to Pinata…" : pinataResult ? "IPFS metadata uploaded ✓" : "Upload logo + metadata to IPFS"}</button><button type="button" className="fb-connect-wallet" onClick={connectWallet} disabled={walletBusy}>{walletBusy ? "Connecting…" : wallet ? "Wallet connected ✓" : isSolana ? "Connect Phantom / Solflare" : "Connect Robinhood Wallet"}</button><button type="button" className="fb-launch-disabled" disabled title="Available after the launch protocol is integrated and tested">Launch coin · Coming soon</button></div>
+        <div className="fb-create-actions"><button type="button" className="fb-connect-wallet" onClick={uploadTokenMetadata} disabled={pinataBusy || !logoFile}>{pinataBusy ? "Uploading to Pinata…" : pinataResult ? "IPFS metadata uploaded ✓" : "Upload logo + metadata to IPFS"}</button><button type="button" className="fb-connect-wallet" onClick={connectWallet} disabled={walletBusy}>{walletBusy ? "Connecting…" : wallet ? "Wallet connected ✓" : isSolana ? "Connect Phantom / Solflare" : "Connect Robinhood Wallet"}</button><button type="button" className="fb-create-launch" onClick={launchFixedSupplyToken} disabled={launchBusy || !wallet || !form.name.trim() || !form.symbol.trim()}>{launchBusy ? "Deploying…" : isSolana ? "Create fixed-supply token · Devnet" : "Deploy fixed-supply token · Testnet"}</button></div>
+        {launchMessage ? <p className="fb-wallet-message" role="status">{launchMessage}</p> : null}
+        {launchResult ? <div className="fb-protocol-note"><strong>On-chain fixed-supply verification passed</strong><br/>Network: {launchResult.network}<br/>Supply: {Number(launchResult.supply).toLocaleString("en-US")}<br/>Decimals: {launchResult.decimals}<br/>{launchResult.mint ? <>Mint: <code>{launchResult.mint}</code><br/>Mint authority: {String(launchResult.mintAuthority)} · Freeze authority: {String(launchResult.freezeAuthority)}<br/><a href={"https://explorer.solana.com/address/" + launchResult.mint + "?cluster=devnet"} target="_blank" rel="noreferrer">View mint on Solana Explorer ↗</a></> : <>Contract: <code>{launchResult.address}</code><br/>Mint function: {launchResult.mintFunction}<br/><a href={launchResult.explorerUrl} target="_blank" rel="noreferrer">View contract on Robinhood testnet explorer ↗</a></>}<br/>Transaction: <code>{launchResult.signature || launchResult.transactionHash}</code></div> : null}
         {pinataMessage ? <p className="fb-wallet-message" role="status">{pinataMessage}</p> : null}
         {pinataResult ? <div className="fb-protocol-note"><strong>IPFS metadata ready:</strong> <code>{pinataResult.metadataUri}</code><br/><a href={pinataResult.metadataUrl} target="_blank" rel="noreferrer">View metadata ↗</a> · <a href={pinataResult.image} target="_blank" rel="noreferrer">View logo ↗</a><br/>Keep this metadata URI for the verified Solana launch transaction.</div> : null}
         {walletMessage ? <p className="fb-wallet-message" role="status">{walletMessage}</p> : null}
-        <div className="fb-protocol-note"><strong>Launch status:</strong> Wallet connection is available, but token deployment is not. {isSolana ? "Solana needs a verified Pump program integration, metadata upload, transaction simulation, and mainnet testing." : "Robinhood Chain needs deployed and independently reviewed bonding-curve and graduation contracts."} No token is created and no funds are collected by this form. The 1,000,000,000 supply is locked in the launch configuration; on-chain enforcement still requires the audited deployment contract, which is not yet enabled.</div>
+        <div className="fb-protocol-note"><strong>Test deployment only:</strong> {isSolana ? "This creates a standard SPL token on Solana Devnet, then permanently revokes mint and freeze authority. Switch your wallet to Devnet and use devnet SOL for fees." : "This deploys the fixed-supply ERC-20 to Robinhood Chain Testnet (chain ID 46630). It is not a mainnet launch."} Exactly 1,000,000,000 tokens are created. The launch flow does not yet create a bonding curve, liquidity pool, graduation route, or on-chain token metadata. IPFS metadata upload is separate and is not attached to the Solana mint by this test flow. Do not use mainnet funds for this test.</div>
       </section> : null}
       <div className="fb-launch-toolbar"><div><span className="fb-section-eyebrow">THE LAUNCH FLOOR</span><h2>Explore {isSolana ? "Solana" : "Robinhood Chain"} launches</h2></div><div className="fb-launch-filters">{[["all","All coins"],["new","New"],["active","Active"],["graduated","Graduated"]].map(([value,label]) => <button key={value} className={tab===value?"active":""} onClick={() => setTab(value)}>{label}</button>)}</div></div>
       {visibleTokens.length ? <div className="fb-launch-grid">{visibleTokens.slice(0,50).map((token) => <article className="fb-launch-token" key={token.address || token.mint}>

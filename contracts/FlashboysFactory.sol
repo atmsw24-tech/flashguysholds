@@ -47,7 +47,12 @@ contract FlashboysFactory {
     }
 
     function setGraduationAdapter(address adapter) external onlyCreator {
+        if (adapter == address(0) || adapter.code.length == 0) revert InvalidParameters();
+        if (graduationAdapter != address(0)) {
+            feeRouter.setFeeCollector(graduationAdapter, false);
+        }
         graduationAdapter = adapter;
+        feeRouter.setFeeCollector(adapter, true);
         emit GraduationAdapterUpdated(adapter);
     }
 

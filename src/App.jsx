@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { BrowserProvider, Contract, parseEther, parseUnits, formatEther, formatUnits } from "ethers";
 import { apiUrl } from "./apiBase";
 import { fetchGMGNTokens } from "./marketData";
 import { isRealTokenRecord, hasVerifiedLiveMarket } from "./tokenValidation";
@@ -575,10 +576,28 @@ function RobinhoodBuyPanel({ token }) {
   const [wallet, setWallet] = useState("");
   const CHAIN = "0x1237";
   const ETH = "0x0000000000000000000000000000000000000000";
+  const FACTORY = String(import.meta.env.VITE_FLASHBOYS_FACTORY_ADDRESS || "").trim();
+  const FACTORY_ABI = ["function curveForToken(address) view returns (address)"];
+  const CURVE_ABI = [
+    "function buy(uint256 minTokensOut) payable returns (uint256)",
+    "function sell(uint256 amount,uint256 minEthOut) returns (uint256)",
+    "function feeBps() view returns (uint16)",
+    "function virtualEthReserve() view returns (uint256)",
+    "function virtualTokenReserve() view returns (uint256)",
+    "function nativeReserve() view returns (uint256)",
+    "function graduated() view returns (bool)",
+    "function token() view returns (address)"
+  ];
+  const TOKEN_ABI = [
+    "function decimals() view returns (uint8)",
+    "function balanceOf(address) view returns (uint256)",
+    "function allowance(address,address) view returns (uint256)",
+    "function approve(address,uint256) returns (bool)"
+  ];
   const request = async (action, payload) => {
     const res = await fetch(apiUrl("robinhood-swap"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...payload }) });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Robinhood swap service failed.");
+    if (!res.ok) throw new Error(data.error || "Uniswap swap service failed.");
     return data;
   };
   useEffect(() => {
@@ -588,67 +607,132 @@ function RobinhoodBuyPanel({ token }) {
     setError(""); setMessage(""); setQuote(null);
     if (!token.address || !/^0x[a-fA-F0-9]{40}$/.test(token.address)) return setError("A valid Robinhood Chain token contract address is required.");
     const n = Number(amount);
-    if (!Number.isFinite(n) || n <= 0 || n > 100) return setError("Enter an amount greater than 0 and no more than 100 ETH.");
+    if (!Number.isFinite(n) || n <= 0 || n > 100) return setError(side === "buy" ? "Enter an amount greater than 0 and no more than 100 ETH." : "Enter a valid token amount.");
     setBusy(true);
     try {
-      const provider = window.ethereum;
-      if (!provider?.request) throw new Error("Connect Robinhood Wallet, MetaMask, or another EVM wallet first.");
-      const accounts = await provider.request({ method: "eth_requestAccounts" });
+      const ethereum = window.ethereum;
+      if (!ethereum?.request) throw new Error("Connect Robinhood Wallet, MetaMask, or another EVM wallet first.");
+      const accounts = await ethereum.request({ method: "eth_requestAccounts" });
       if (!accounts?.[0]) throw new Error("Wallet connection was not approved.");
-      let chainId = String(await provider.request({ method: "eth_chainId" })).toLowerCase();
+      let chainId = String(await ethereum.request({ method: "eth_chainId" })).toLowerCase();
       if (chainId !== CHAIN) {
-        try { await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CHAIN }] }); }
+        try { await ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CHAIN }] }); }
         catch (e) {
           if (e?.code !== 4902) throw e;
-          await provider.request({ method: "wallet_addEthereumChain", params: [{ chainId: CHAIN, chainName: "Robinhood Chain", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: ["https://rpc.mainnet.chain.robinhood.com"], blockExplorerUrls: ["https://robinhoodchain.blockscout.com"] }] });
-          await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CHAIN }] });
+          await ethereum.request({ method: "wallet_addEthereumChain", params: [{ chainId: CHAIN, chainName: "Robinhood Chain", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: ["https://rpc.mainnet.chain.robinhood.com"], blockExplorerUrls: ["https://robinhoodchain.blockscout.com"] }] });
+          await ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CHAIN }] });
         }
       }
-      chainId = String(await provider.request({ method: "eth_chainId" })).toLowerCase();
+      chainId = String(await ethereum.request({ method: "eth_chainId" })).toLowerCase();
       if (chainId !== CHAIN) throw new Error("Switch your wallet to Robinhood Chain (4663).");
       const address = accounts[0]; setWallet(address);
-      const w = { chain: "evm", walletName: "EVM wallet", address, chainId: CHAIN, connectedAt: new Date().toISOString() };
-      localStorage.setItem("flashguys.connected.wallet", JSON.stringify(w)); window.dispatchEvent(new Event("flashguys:wallet"));
-      const decimals = side === "buy" ? 18 : Number(token.decimals);
-      if (!Number.isInteger(decimals) || decimals < 0 || decimals > 18) throw new Error("Token decimals are unavailable; cannot safely prepare a sell quote.");
-      const [whole, fraction = ""] = amount.trim().split(".");
-      const baseAmount = (BigInt(whole || "0") * 10n ** BigInt(decimals) + BigInt((fraction + "0".repeat(decimals)).slice(0, decimals) || "0")).toString();
-      const data = await request("quote", { tokenIn: side === "buy" ? ETH : token.address, tokenOut: side === "buy" ? token.address : ETH, amount: baseAmount, swapper: address });
+      localStorage.setItem("flashguys.connected.wallet", JSON.stringify({ chain: "evm", walletName: "EVM wallet", address, chainId: CHAIN, connectedAt: new Date().toISOString() }));
+      window.dispatchEvent(new Event("flashguys:wallet"));
+      const provider = new BrowserProvider(ethereum);
+      // FLASHBOYS factory launches trade directly against their own curve until graduation.
+      if (FACTORY && /^0x[a-fA-F0-9]{40}$/.test(FACTORY)) {
+        const factory = new Contract(FACTORY, FACTORY_ABI, provider);
+        const curveAddress = await factory.curveForToken(token.address);
+        if (curveAddress && curveAddress !== "0x0000000000000000000000000000000000000000" && await provider.getCode(curveAddress) !== "0x") {
+          const curve = new Contract(curveAddress, CURVE_ABI, provider);
+          const [graduated, curveToken] = await Promise.all([curve.graduated(), curve.token()]);
+          if (curveToken.toLowerCase() !== token.address.toLowerCase()) throw new Error("Factory returned a curve for a different token. Trading stopped for safety.");
+          if (!graduated) {
+            const [feeBps, ethReserve, tokenReserve, nativeReserve, curveTokenBalance] = await Promise.all([
+              curve.feeBps(), curve.virtualEthReserve(), curve.virtualTokenReserve(), curve.nativeReserve(),
+              new Contract(token.address, TOKEN_ABI, provider).balanceOf(curveAddress)
+            ]);
+            const k = ethReserve * tokenReserve;
+            if (side === "buy") {
+              const input = parseEther(amount);
+              const fee = input * BigInt(feeBps) / 10000n;
+              const netInput = input - fee;
+              const nextTokens = k / (ethReserve + netInput);
+              const out = tokenReserve - nextTokens;
+              if (out <= 0n || out > curveTokenBalance) throw new Error("The bonding curve has insufficient tokens for this buy.");
+              setQuote({ mode: "curve", curveAddress, input: input.toString(), output: out.toString(), minOutput: (out * 9950n / 10000n).toString(), feeBps: Number(feeBps), fee: fee.toString(), graduated: false });
+            } else {
+              const decimals = Number(await new Contract(token.address, TOKEN_ABI, provider).decimals());
+              if (!Number.isInteger(decimals) || decimals < 0 || decimals > 18) throw new Error("Token decimals could not be verified.");
+              const input = parseUnits(amount, decimals);
+              const nextTokens = tokenReserve + input;
+              const gross = ethReserve - k / nextTokens;
+              const fee = gross * BigInt(feeBps) / 10000n;
+              const net = gross - fee;
+              if (net <= 0n || net > nativeReserve) throw new Error("The bonding curve has insufficient ETH reserves for this sell.");
+              setQuote({ mode: "curve", curveAddress, input: input.toString(), output: net.toString(), minOutput: (net * 9950n / 10000n).toString(), feeBps: Number(feeBps), fee: fee.toString(), graduated: false });
+            }
+            setMessage("FLASHBOYS bonding-curve quote ready. Your trade fee is routed 60% to the creator and 40% to the holder rewards vault when the transaction executes.");
+            return;
+          }
+        }
+      }
+      // Non-FLASHBOYS tokens and graduated FLASHBOYS tokens use the Uniswap route.
+      const decimals = side === "buy" ? 18 : Number(await new Contract(token.address, TOKEN_ABI, provider).decimals());
+      const input = parseUnits(amount, decimals);
+      const data = await request("quote", { tokenIn: side === "buy" ? ETH : token.address, tokenOut: side === "buy" ? token.address : ETH, amount: input.toString(), swapper: address });
       if (!data.quote) throw new Error(data.error || "No Uniswap route returned for this token.");
-      if (["DUTCH_V2", "DUTCH_V3", "PRIORITY"].includes(data.routing)) throw new Error("This quote requires UniswapX order signing, which is not enabled in this version. Try another route or token.");
-      setQuote(data); setMessage("Quote simulated by Uniswap. No transaction has been sent.");
-    } catch (e) { setError(e.message || "Could not get a Robinhood Chain quote."); }
+      if (["DUTCH_V2", "DUTCH_V3", "PRIORITY"].includes(data.routing)) throw new Error("This quote requires UniswapX order signing, which is not enabled. Try another route or token.");
+      setQuote({ mode: "uniswap", data, input: input.toString() });
+      setMessage("Uniswap quote ready. Review the route and confirm in your wallet.");
+    } catch (e) { setError(e.message || "Could not prepare a Robinhood Chain quote."); }
     finally { setBusy(false); }
   }
-  async function buy() {
+  async function executeTrade() {
     if (!quote) return;
     setBusy(true); setError(""); setMessage("");
     try {
-      const provider = window.ethereum;
-      const accounts = await provider.request({ method: "eth_requestAccounts" });
+      const ethereum = window.ethereum;
+      const accounts = await ethereum.request({ method: "eth_requestAccounts" });
       const address = accounts?.[0];
-      if (!address) throw new Error("Connect your EVM wallet first.");
-      if (String(await provider.request({ method: "eth_chainId" })).toLowerCase() !== CHAIN) throw new Error("Select Robinhood Chain (4663) in your wallet before buying.");
-      const swapData = await request("swap", { quote: quote.quote });
-      const tx = swapData.swap || swapData.swapTransaction;
-      if (!tx?.to || !tx?.data) throw new Error("Uniswap did not return executable transaction data.");
-      const txHash = await provider.request({ method: "eth_sendTransaction", params: [{ from: address, to: tx.to, data: tx.data, value: tx.value || "0x0", ...(tx.gasLimit ? { gas: tx.gasLimit } : {}), ...(tx.maxFeePerGas ? { maxFeePerGas: tx.maxFeePerGas } : {}), ...(tx.maxPriorityFeePerGas ? { maxPriorityFeePerGas: tx.maxPriorityFeePerGas } : {}), ...(tx.gasPrice ? { gasPrice: tx.gasPrice } : {}) }] });
-      setMessage(`Transaction submitted: ${txHash}. Track confirmation in Robinhood Chain Explorer.`); setQuote(null);
-    } catch (e) { setError(e.message || "Swap failed or was cancelled."); }
+      if (!address || String(await ethereum.request({ method: "eth_chainId" })).toLowerCase() !== CHAIN) throw new Error("Connect your wallet and select Robinhood Chain (4663).");
+      const provider = new BrowserProvider(ethereum);
+      const signer = await provider.getSigner();
+      if (quote.mode === "curve") {
+        const curve = new Contract(quote.curveAddress, CURVE_ABI, signer);
+        if (side === "buy") {
+          const tx = await curve.buy(quote.minOutput, { value: quote.input });
+          setMessage("Buy submitted. Waiting for on-chain confirmation…");
+          const receipt = await tx.wait();
+          setMessage("FLASHBOYS buy confirmed: " + receipt.hash);
+        } else {
+          const tokenContract = new Contract(token.address, TOKEN_ABI, signer);
+          const allowance = await tokenContract.allowance(address, quote.curveAddress);
+          if (allowance < BigInt(quote.input)) {
+            setMessage("Approve token spending in your wallet first. Then the sell transaction will be submitted.");
+            const approval = await tokenContract.approve(quote.curveAddress, quote.input);
+            await approval.wait();
+          }
+          const tx = await curve.sell(quote.input, quote.minOutput);
+          setMessage("Sell submitted. Waiting for on-chain confirmation…");
+          const receipt = await tx.wait();
+          setMessage("FLASHBOYS sell confirmed: " + receipt.hash);
+        }
+      } else {
+        const swapData = await request("swap", { quote: quote.data.quote });
+        const tx = swapData.swap || swapData.swapTransaction;
+        if (!tx?.to || !tx?.data) throw new Error("Uniswap did not return executable transaction data.");
+        const txHash = await ethereum.request({ method: "eth_sendTransaction", params: [{ from: address, to: tx.to, data: tx.data, value: tx.value || "0x0", ...(tx.gasLimit ? { gas: tx.gasLimit } : {}), ...(tx.maxFeePerGas ? { maxFeePerGas: tx.maxFeePerGas } : {}), ...(tx.maxPriorityFeePerGas ? { maxPriorityFeePerGas: tx.maxPriorityFeePerGas } : {}), ...(tx.gasPrice ? { gasPrice: tx.gasPrice } : {}) }] });
+        setMessage("Uniswap transaction submitted: " + txHash + ". Check Robinhood Chain Explorer for confirmation.");
+      }
+      setQuote(null);
+    } catch (e) { setError(e.shortMessage || e.reason || e.message || "Trade failed or was cancelled."); }
     finally { setBusy(false); }
   }
-  const output = quote?.quote?.output?.amount || quote?.quote?.output?.amountOut || "";
+  const output = quote?.mode === "curve" ? quote.output : (quote?.data?.quote?.output?.amount || quote?.data?.quote?.output?.amountOut || "");
+  const isCurve = quote?.mode === "curve";
   return <section className="rh-buy-card">
     <div className="rh-buy-topline"><span className="rh-buy-live"><i /> IN-APP SWAP</span><span className="rh-buy-network">ROBINHOOD CHAIN</span></div>
-    <div style={{display:"flex",gap:8,marginBottom:12}}><button type="button" className={side==="buy"?"rh-buy-cta":"refined-volume-toggle"} onClick={()=>{setSide("buy");setQuote(null);}}>Buy</button><button type="button" className={side==="sell"?"rh-buy-cta":"refined-volume-toggle"} onClick={()=>{setSide("sell");setQuote(null);}}>Sell</button></div><div className="rh-buy-heading"><div className="rh-buy-coin-icon">↗</div><div><h3>Buy {token.symbol || "token"}</h3><p>Swap ETH for {token.symbol || "this token"}</p></div><span className="rh-buy-provider">UNI<span>SWAP</span></span></div>
+    <div style={{display:"flex",gap:8,marginBottom:12}}><button type="button" className={side==="buy"?"rh-buy-cta":"refined-volume-toggle"} onClick={()=>{setSide("buy");setQuote(null);setError("");setMessage("");}}>Buy</button><button type="button" className={side==="sell"?"rh-buy-cta":"refined-volume-toggle"} onClick={()=>{setSide("sell");setQuote(null);setError("");setMessage("");}}>Sell</button></div>
+    <div className="rh-buy-heading"><div className="rh-buy-coin-icon">↗</div><div><h3>{side === "buy" ? "Buy " : "Sell "}{token.symbol || "token"}</h3><p>{isCurve ? "FLASHBOYS bonding curve" : "Uniswap route for external or graduated tokens"}</p></div><span className="rh-buy-provider">{isCurve ? "FLASHBOYS" : "UNI<span>SWAP</span>"}</span></div>
     <div className="rh-buy-input-label"><label htmlFor="fg-rh-buy-eth">YOU PAY</label><span>{side === "buy" ? "Native asset · ETH" : "Token · " + (token.symbol || "TOKEN")}</span></div>
-    <div className="rh-buy-amount-box"><input id="fg-rh-buy-eth" type="number" min="0.000001" max="100" step="0.001" value={amount} onChange={e => { setAmount(e.target.value); setQuote(null); }} /><strong>{side === "buy" ? "ETH" : (token.symbol || "TOKEN")}</strong></div>
-    <div className="rh-buy-receive"><span>YOU RECEIVE</span><strong>{quote ? (output ? Number(output).toLocaleString("en-US") : "See quote details") : "—"} <small>{side === "buy" ? (token.symbol || "TOKEN") : "ETH"}</small></strong></div>
-    {quote ? <div className="rh-buy-details"><div><span>Route</span><strong>{quote.routing || "Uniswap"}</strong></div><div><span>Estimated gas (USD)</span><strong>{quote.quote?.classicGasUseEstimateUSD || "Not supplied"}</strong></div><div><span>Slippage</span><strong>0.5%</strong></div></div> : <p className="rh-buy-note">Get a live quote before swapping. Network fees apply and your wallet will ask you to approve the transaction.</p>}
-    <button type="button" className="rh-buy-cta" onClick={quote ? buy : getQuote} disabled={busy}>{busy ? "Preparing swap…" : quote ? `Confirm ${side} in wallet` : `Get ${side} quote`} <span>→</span></button>
+    <div className="rh-buy-amount-box"><input id="fg-rh-buy-eth" type="number" min="0.000000000000000001" max={side === "buy" ? "100" : undefined} step="any" value={amount} onChange={e => { setAmount(e.target.value); setQuote(null); setMessage(""); }} /><strong>{side === "buy" ? "ETH" : (token.symbol || "TOKEN")}</strong></div>
+    <div className="rh-buy-receive"><span>YOU RECEIVE</span><strong>{quote ? (output ? (isCurve && side === "sell" ? Number(formatEther(BigInt(output))).toFixed(8) : isCurve ? Number(formatUnits(BigInt(output), 18)).toLocaleString("en-US", { maximumFractionDigits: 4 }) : Number(output).toLocaleString("en-US")) : "See quote details") : "—"} <small>{side === "buy" ? (token.symbol || "TOKEN") : "ETH"}</small></strong></div>
+    {quote ? <div className="rh-buy-details"><div><span>Route</span><strong>{isCurve ? "FLASHBOYS curve" : "Uniswap"}</strong></div><div><span>Trading fee</span><strong>{isCurve ? (quote.feeBps / 100).toFixed(2) + "% · 60/40 split" : "Uniswap pool fee"}</strong></div><div><span>Slippage protection</span><strong>0.5%</strong></div></div> : <p className="rh-buy-note">Get a live quote first. Your wallet approves every transaction; network gas applies.</p>}
+    <button type="button" className="rh-buy-cta" onClick={quote ? executeTrade : getQuote} disabled={busy}>{busy ? "Processing…" : quote ? (side === "buy" ? "Confirm buy in wallet" : "Approve / confirm sell") : "Get " + side + " quote"} <span>→</span></button>
     {message ? <p className="rh-buy-feedback" role="status">{message}</p> : null}
     {error ? <p className="rh-buy-feedback is-error" role="alert">{error}</p> : null}
-    <div className="rh-buy-footer"><span className="rh-buy-wallet-dot" /><span>{wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-5)}` : "Wallet connects when you request a quote"}</span><span className="rh-buy-secure">WALLET-APPROVED</span></div>
+    <div className="rh-buy-footer"><span className="rh-buy-wallet-dot" /><span>{wallet ? wallet.slice(0, 6) + "…" + wallet.slice(-5) : "Wallet connects when you request a quote"}</span><span className="rh-buy-secure">WALLET-APPROVED</span></div>
   </section>;
 }
 
